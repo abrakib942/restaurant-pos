@@ -1,0 +1,21 @@
+services:
+  db:
+    image: postgres:16-alpine
+    container_name: brasa-postgres
+    restart: unless-stopped
+    ports:
+      - "5433:5432"
+    environment:
+      POSTGRES_USER: brasa
+      POSTGRES_PASSWORD: brasa
+      POSTGRES_DB: brasa
+    volumes:
+      - brasa_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U brasa -d brasa"]
+      interval: 3s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  brasa_pgdata:
