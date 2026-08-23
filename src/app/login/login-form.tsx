@@ -37,11 +37,11 @@ export function LoginForm() {
           {RESTAURANT_NAME}
         </p>
         <CardTitle className="text-xl font-medium">Staff entrance</CardTitle>
-        <CardDescription>
+        <CardDescription id="login-description">
           Sign in with your username and 4-digit PIN.
         </CardDescription>
       </CardHeader>
-      <form action={formAction}>
+      <form action={formAction} aria-describedby="login-description">
         <CardContent className="space-y-4">
           <div className="space-y-2">
             <Label htmlFor="username">Username</Label>
