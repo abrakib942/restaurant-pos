@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { AlertTriangle } from "lucide-react";
-import type { WaiterNotificationsData } from "@/lib/waiter-notifications";
+import type { WaiterNotificationsData } from "@/lib/types/waiter-notifications";
 import { apiFetch } from "@/lib/api-client";
 import { isExpoStale } from "@/lib/expo-meta";
 import { formatElapsedMs } from "@/lib/kitchen-meta";

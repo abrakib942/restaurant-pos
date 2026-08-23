@@ -16,8 +16,8 @@ import {
 } from "@/components/ui/card";
 import { RESTAURANT_NAME } from "@/lib/constants";
 import { ApiClientError, apiMutate } from "@/lib/api-client";
-import { roleHomePath } from "@/lib/session";
-import type { Role } from "@repo/db";
+import { roleHomePath } from "@/lib/role-path";
+import type { Role } from "@/lib/role-path";
 
 type LoginData = {
   redirectTo?: string;

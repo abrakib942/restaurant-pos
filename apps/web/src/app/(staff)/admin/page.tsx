@@ -1,5 +1,5 @@
 import { requireRole } from "@/lib/auth";
-import type { AdminDashboardData } from "@/lib/dashboard";
+import type { AdminDashboardData } from "@/lib/types/dashboard";
 import { serverApiData } from "@/lib/server-api";
 import { DashboardOverview } from "@/components/admin/dashboard-overview";
 

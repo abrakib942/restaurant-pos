@@ -2,6 +2,9 @@ import { getAppUrl } from "@/lib/constants";
 import type { ApiOk } from "@/lib/api/envelope";
 
 function apiBase() {
+  if (typeof window !== "undefined") {
+    return "/backend";
+  }
   const env =
     process.env.NEXT_PUBLIC_API_BASE_URL?.replace(/\/$/, "") ??
     process.env.NEXT_PUBLIC_API_URL?.replace(/\/$/, "");

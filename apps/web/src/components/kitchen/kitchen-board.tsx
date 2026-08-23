@@ -5,7 +5,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { Flame, Check, ChefHat, Zap, AlertTriangle } from "lucide-react";
 import { ApiClientError, apiFetch, apiMutate } from "@/lib/api-client";
-import type { KitchenBoardData, KitchenTicket } from "@/lib/kitchen";
+import type { KitchenBoardData, KitchenTicket } from "@/lib/types/kitchen";
 import { COURSE_LABELS, formatElapsedMs } from "@/lib/kitchen-meta";
 import { isExpoStale } from "@/lib/expo-meta";
 import { playExpoBumpChime, playNewTicketChime } from "@/lib/chimes";

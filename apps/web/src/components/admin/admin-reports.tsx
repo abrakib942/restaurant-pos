@@ -4,7 +4,7 @@ import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { Ban, BarChart3, Clock, Users } from "lucide-react";
-import type { AdminReportsData, VoidableItemRow } from "@/lib/reports";
+import type { AdminReportsData, VoidableItemRow } from "@/lib/types/reports";
 import { ApiClientError, apiMutate } from "@/lib/api-client";
 import { formatMoney } from "@/lib/money";
 import { Button } from "@/components/ui/button";

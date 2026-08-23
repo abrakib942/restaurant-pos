@@ -1,5 +1,5 @@
 import { requireRole } from "@/lib/auth";
-import type { AdminReportsData, VoidableItemRow } from "@/lib/reports";
+import type { AdminReportsData, VoidableItemRow } from "@/lib/types/reports";
 import { serverApiData } from "@/lib/server-api";
 import { AdminReports } from "@/components/admin/admin-reports";
 

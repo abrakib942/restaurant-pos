@@ -6,7 +6,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { AlertTriangle, Bell } from "lucide-react";
 import { ApiClientError, apiFetch, apiMutate } from "@/lib/api-client";
-import type { WaiterNotificationsData } from "@/lib/waiter-notifications";
+import type { WaiterNotificationsData } from "@/lib/types/waiter-notifications";
 import { isExpoStale } from "@/lib/expo-meta";
 import { formatElapsedMs } from "@/lib/kitchen-meta";
 import { playExpoBumpChime } from "@/lib/chimes";

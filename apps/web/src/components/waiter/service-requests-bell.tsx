@@ -6,7 +6,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { HandHelping, Receipt } from "lucide-react";
 import { ApiClientError, apiFetch, apiMutate } from "@/lib/api-client";
-import type { ServiceRequestsData } from "@/lib/service-requests";
+import type { ServiceRequestsData } from "@/lib/types/service-requests";
 import { POLL_INTERVAL_MS } from "@/lib/constants";
 import { useSseConnected } from "@/components/providers/realtime-listener";
 import { Button } from "@/components/ui/button";

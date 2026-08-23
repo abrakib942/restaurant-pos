@@ -2,7 +2,7 @@ import { TableGrid } from "@/components/waiter/table-grid";
 import { PassStrip } from "@/components/waiter/pass-strip";
 import { WaitlistStrip } from "@/components/waiter/waitlist-strip";
 import { requireRole } from "@/lib/auth";
-import type { WaitlistParty } from "@/lib/waitlist";
+import type { WaitlistParty } from "@/lib/types/waitlist";
 import { serverApiData } from "@/lib/server-api";
 
 type FloorData = {

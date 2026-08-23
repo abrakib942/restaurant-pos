@@ -1,9 +1,9 @@
 import "server-only";
 
 import { redirect } from "next/navigation";
-import type { Role } from "@repo/db";
+import type { Role } from "@/lib/role-path";
 import { serverApiData } from "@/lib/server-api";
-import { roleHomePath, type SessionPayload } from "@/lib/session";
+import { roleHomePath, type SessionPayload } from "@/lib/role-path";
 
 type MeResponse = SessionPayload;
 

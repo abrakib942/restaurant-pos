@@ -1,6 +1,6 @@
 import { KitchenBoard } from "@/components/kitchen/kitchen-board";
 import { requireRole } from "@/lib/auth";
-import type { KitchenBoardData } from "@/lib/kitchen";
+import type { KitchenBoardData } from "@/lib/types/kitchen";
 import { serverApiData } from "@/lib/server-api";
 
 export default async function KitchenHomePage() {

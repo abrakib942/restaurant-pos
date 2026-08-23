@@ -1,6 +1,6 @@
 import { WaitlistManager } from "@/components/admin/waitlist-manager";
 import { AdminWaitlistRealtime } from "@/components/admin/admin-waitlist-realtime";
-import type { WaitlistParty } from "@/lib/waitlist";
+import type { WaitlistParty } from "@/lib/types/waitlist";
 import { serverApiData } from "@/lib/server-api";
 
 type WaitlistData = {

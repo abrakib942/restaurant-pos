@@ -1,5 +1,5 @@
 import Link from "next/link";
-import type { WaitlistParty } from "@/lib/waitlist";
+import type { WaitlistParty } from "@/lib/types/waitlist";
 import { Badge } from "@/components/ui/badge";
 
 type WaitlistStripProps = {

@@ -4,7 +4,7 @@ import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { Bell, Plus, UserCheck, X } from "lucide-react";
-import type { WaitlistParty } from "@/lib/waitlist";
+import type { WaitlistParty } from "@/lib/types/waitlist";
 import { ApiClientError, apiMutate } from "@/lib/api-client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -71,12 +71,12 @@ export function WaitlistManager({
   const [pending, startTransition] = useTransition();
 
   async function handleMutation(
-    fn: () => Promise<void>,
+    fn: () => Promise<{ message?: string }>,
     close?: () => void,
   ) {
     try {
-      await fn();
-      toast.success("Updated");
+      const result = await fn();
+      toast.success(result.message ?? "Updated");
       close?.();
       router.refresh();
     } catch (err) {
@@ -115,7 +115,7 @@ export function WaitlistManager({
               action={(formData) => {
                 startTransition(async () => {
                   await handleMutation(async () => {
-                    await apiMutate("/admin/waitlist", "POST", {
+                    return apiMutate("/admin/waitlist", "POST", {
                       partyName: String(formData.get("partyName") ?? ""),
                       partySize: Number(formData.get("partySize") ?? 1),
                       phone: String(formData.get("phone") ?? "") || undefined,
@@ -243,7 +243,7 @@ export function WaitlistManager({
                           onClick={() => {
                             startTransition(async () => {
                               await handleMutation(async () => {
-                                await apiMutate(
+                              return apiMutate(
                                   `/admin/waitlist/${entry.id}/notify`,
                                   "POST",
                                 );
@@ -274,7 +274,7 @@ export function WaitlistManager({
                           onClick={() => {
                             startTransition(async () => {
                               await handleMutation(async () => {
-                                await apiMutate(
+                                return apiMutate(
                                   `/admin/waitlist/${entry.id}/no-show`,
                                   "POST",
                                 );
@@ -293,7 +293,7 @@ export function WaitlistManager({
                         onClick={() => {
                           startTransition(async () => {
                             await handleMutation(async () => {
-                              await apiMutate(
+                              return apiMutate(
                                 `/admin/waitlist/${entry.id}/cancel`,
                                 "POST",
                               );
@@ -355,7 +355,7 @@ export function WaitlistManager({
                     if (!seatEntry) return;
                     startTransition(async () => {
                       await handleMutation(async () => {
-                        await apiMutate(
+                        return apiMutate(
                           `/admin/waitlist/${seatEntry.id}/seat`,
                           "POST",
                           { tableId },
