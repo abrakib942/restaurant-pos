@@ -14,7 +14,19 @@ const menuItemSchema = z.object({
     .trim()
     .regex(/^\d+(\.\d{1,2})?$/, "Price must be a valid amount")
     .refine((v) => Number(v) > 0, "Price must be greater than 0"),
-  imageUrl: z.string().trim().url("Image URL must be valid"),
+  imageUrl: z
+    .string()
+    .trim()
+    .min(1, "Image is required")
+    .refine((value) => {
+      if (value.startsWith("/uploads/")) return true;
+      try {
+        new URL(value);
+        return true;
+      } catch {
+        return false;
+      }
+    }, "Image must be a valid URL or uploaded file"),
   categoryId: z.string().min(1, "Category is required"),
   sortOrder: z.coerce.number().int().min(0).max(999).default(0),
   isAvailable: z

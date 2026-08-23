@@ -1,8 +1,8 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useState, useTransition, useRef } from "react";
 import { toast } from "sonner";
-import { Pencil, Plus, Trash2 } from "lucide-react";
+import { Pencil, Plus, Trash2, Upload } from "lucide-react";
 import type { ActionResult } from "@/lib/action-result";
 import {
   createMenuItem,
@@ -10,6 +10,7 @@ import {
   toggleMenuItemAvailability,
   updateMenuItem,
 } from "@/app/actions/menu";
+import { uploadMenuImage } from "@/app/actions/upload";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -93,6 +94,9 @@ export function MenuManager({ items, categories }: MenuManagerProps) {
   const [editing, setEditing] = useState<MenuItemRow | null>(null);
   const [categoryId, setCategoryId] = useState(categories[0]?.id ?? "");
   const [available, setAvailable] = useState(true);
+  const [imageUrl, setImageUrl] = useState("");
+  const [uploading, setUploading] = useState(false);
+  const fileRef = useRef<HTMLInputElement>(null);
   const [pending, startTransition] = useTransition();
 
   const filtered =
@@ -108,6 +112,7 @@ export function MenuManager({ items, categories }: MenuManagerProps) {
     setEditing(null);
     setCategoryId(categories[0]?.id ?? "");
     setAvailable(true);
+    setImageUrl("");
     setOpen(true);
   }
 
@@ -115,7 +120,25 @@ export function MenuManager({ items, categories }: MenuManagerProps) {
     setEditing(item);
     setCategoryId(item.categoryId);
     setAvailable(item.isAvailable);
+    setImageUrl(item.imageUrl);
     setOpen(true);
+  }
+
+  async function onImageSelected(file: File | undefined) {
+    if (!file) return;
+    setUploading(true);
+    const formData = new FormData();
+    formData.set("file", file);
+    const result = await uploadMenuImage(formData);
+    setUploading(false);
+    if (!result.ok) {
+      toast.error(result.error);
+      return;
+    }
+    if (result.url) {
+      setImageUrl(result.url);
+      toast.success("Image uploaded");
+    }
   }
 
   return (
@@ -159,6 +182,7 @@ export function MenuManager({ items, categories }: MenuManagerProps) {
               action={(formData) => {
                 formData.set("categoryId", categoryId);
                 formData.set("isAvailable", available ? "true" : "false");
+                formData.set("imageUrl", imageUrl);
                 startTransition(async () => {
                   const result = editing
                     ? await updateMenuItem(formData)
@@ -238,16 +262,53 @@ export function MenuManager({ items, categories }: MenuManagerProps) {
                 </Select>
               </div>
               <div className="space-y-2">
-                <Label htmlFor="imageUrl">Image URL</Label>
-                <Input
-                  id="imageUrl"
-                  name="imageUrl"
-                  required
-                  type="url"
-                  defaultValue={editing?.imageUrl ?? ""}
-                  placeholder="https://images.unsplash.com/..."
-                  disabled={pending}
-                />
+                <Label htmlFor="imageUrl">Image</Label>
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-start">
+                  {imageUrl ? (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img
+                      src={imageUrl}
+                      alt=""
+                      className="size-20 rounded-md object-cover"
+                    />
+                  ) : null}
+                  <div className="flex flex-1 flex-col gap-2">
+                    <Input
+                      id="imageUrl"
+                      name="imageUrl"
+                      value={imageUrl}
+                      onChange={(e) => setImageUrl(e.target.value)}
+                      placeholder="https://… or upload below"
+                      disabled={pending || uploading}
+                    />
+                    <div className="flex flex-wrap items-center gap-2">
+                      <input
+                        ref={fileRef}
+                        type="file"
+                        accept="image/jpeg,image/png,image/webp"
+                        className="hidden"
+                        onChange={(e) => {
+                          void onImageSelected(e.target.files?.[0]);
+                          e.target.value = "";
+                        }}
+                      />
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        className="gap-1.5"
+                        disabled={pending || uploading}
+                        onClick={() => fileRef.current?.click()}
+                      >
+                        <Upload className="size-4" />
+                        {uploading ? "Uploading…" : "Upload file"}
+                      </Button>
+                      <p className="text-xs text-muted-foreground">
+                        JPEG, PNG, or WebP · max 2 MB
+                      </p>
+                    </div>
+                  </div>
+                </div>
               </div>
               <div className="flex items-center justify-between rounded-lg border border-border px-3 py-2">
                 <div>
@@ -263,7 +324,10 @@ export function MenuManager({ items, categories }: MenuManagerProps) {
                 />
               </div>
               <DialogFooter>
-                <Button type="submit" disabled={pending || !categoryId}>
+                <Button
+                  type="submit"
+                  disabled={pending || uploading || !categoryId || !imageUrl}
+                >
                   {pending ? "Saving…" : editing ? "Save changes" : "Create"}
                 </Button>
               </DialogFooter>
