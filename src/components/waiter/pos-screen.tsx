@@ -4,8 +4,13 @@ import { useMemo, useState, useTransition } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { ArrowLeft, Minus, Plus, Trash2 } from "lucide-react";
+import { ArrowLeft, Minus, Plus, Trash2, Zap } from "lucide-react";
 import { submitOrder } from "@/app/actions/orders";
+import {
+  FloorOpsPanel,
+  type FloorOpsTable,
+  type FloorOpsWaiter,
+} from "@/components/waiter/floor-ops-panel";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
@@ -40,6 +45,7 @@ type CartLine = {
   name: string;
   unitPrice: string;
   qty: number;
+  rush: boolean;
 };
 
 type PosScreenProps = {
@@ -51,6 +57,12 @@ type PosScreenProps = {
   categories: PosCategory[];
   menuItems: PosMenuItem[];
   existingLines: ExistingOrderLine[];
+  floorOps?: {
+    hasActiveOrder: boolean;
+    currentWaiterId: string | null;
+    tables: FloorOpsTable[];
+    waiters: FloorOpsWaiter[];
+  };
 };
 
 function formatPrice(price: string) {
@@ -63,6 +75,7 @@ export function PosScreen({
   categories,
   menuItems,
   existingLines,
+  floorOps,
 }: PosScreenProps) {
   const router = useRouter();
   const [categoryId, setCategoryId] = useState<string>(
@@ -101,6 +114,7 @@ export function PosScreen({
           name: item.name,
           unitPrice: item.price,
           qty: 1,
+          rush: false,
         },
       ];
     });
@@ -122,6 +136,14 @@ export function PosScreen({
     setCart((prev) => prev.filter((line) => line.menuItemId !== menuItemId));
   }
 
+  function toggleRush(menuItemId: string) {
+    setCart((prev) =>
+      prev.map((line) =>
+        line.menuItemId === menuItemId ? { ...line, rush: !line.rush } : line,
+      ),
+    );
+  }
+
   function onSubmit() {
     if (cart.length === 0) {
       toast.error("Add at least one item");
@@ -133,6 +155,7 @@ export function PosScreen({
         items: cart.map((line) => ({
           menuItemId: line.menuItemId,
           qty: line.qty,
+          rush: line.rush,
         })),
       });
       if (!result.ok) {
@@ -161,6 +184,16 @@ export function PosScreen({
           <Badge variant="secondary" className="rounded-md capitalize">
             {table.status.toLowerCase()}
           </Badge>
+          {floorOps ? (
+            <FloorOpsPanel
+              tableId={table.id}
+              tableLabel={table.label}
+              hasActiveOrder={floorOps.hasActiveOrder}
+              currentWaiterId={floorOps.currentWaiterId}
+              tables={floorOps.tables}
+              waiters={floorOps.waiters}
+            />
+          ) : null}
           {existingLines.length > 0 || billingLocked ? (
             <Button asChild size="sm" variant="outline" className="ml-auto">
               <Link href={`/waiter/tables/${table.id}/checkout`}>Checkout</Link>
@@ -273,7 +306,8 @@ export function PosScreen({
       <aside className="w-full shrink-0 rounded-lg border border-border bg-card/40 p-4 lg:sticky lg:top-20 lg:w-80">
         <p className="font-heading text-xl">Ticket</p>
         <p className="text-xs text-muted-foreground">
-          New items send to the kitchen as Pending.
+          New items send to the kitchen as Pending. Toggle Rush per line if
+          needed.
         </p>
         <Separator className="my-3" />
 
@@ -323,6 +357,17 @@ export function PosScreen({
                     disabled={pending || line.qty >= 99}
                   >
                     <Plus className="size-3.5" />
+                  </Button>
+                  <Button
+                    type="button"
+                    size="xs"
+                    variant={line.rush ? "destructive" : "outline"}
+                    className="gap-1"
+                    onClick={() => toggleRush(line.menuItemId)}
+                    disabled={pending}
+                  >
+                    <Zap className="size-3" />
+                    Rush
                   </Button>
                   <span className="ml-auto text-sm tabular-nums">
                     {formatPrice(String(Number(line.unitPrice) * line.qty))}
