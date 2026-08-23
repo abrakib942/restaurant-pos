@@ -1,8 +1,8 @@
 # See https://help.github.com/articles/ignoring-files/ for more about ignoring files.
 
 # dependencies
-/node_modules
-/.pnp
+node_modules
+.pnp
 .pnp.*
 .yarn/*
 !.yarn/patches
@@ -14,15 +14,22 @@
 /coverage
 
 # next.js
-/.next/
-/out/
+.next/
+out/
 
 # production
 /build
+dist/
 
 # misc
 .DS_Store
 *.pem
+
+# Cursor IDE / agent local files
+.cursor/
+
+# turbo
+.turbo/
 
 # debug
 npm-debug.log*
@@ -36,12 +43,25 @@ yarn-error.log*
 .env*.local
 !.env.example
 
-# prisma generated client
-/src/generated
-
 # vercel
 .vercel
 
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# local menu uploads
+**/public/uploads/
+
+# playwright
+/test-results/
+/playwright-report/
+apps/web/test-results/
+apps/web/playwright-report/
+
+# prisma generated client
+packages/db/generated/
+**/src/generated/
+
+# nested boilerplate (removed in phase 6)
+custom-dynamic-website-boilerplate-monorepo/
