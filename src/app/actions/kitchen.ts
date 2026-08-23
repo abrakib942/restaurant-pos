@@ -3,12 +3,14 @@
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
 import { requireRole } from "@/lib/auth";
+import { notifyKitchen } from "@/lib/realtime";
 import { KITCHEN_IN_PROGRESS_CAP } from "@/lib/constants";
 import { actionError, actionOk, type ActionResult } from "@/lib/action-result";
 
 function revalidateKitchen() {
   revalidatePath("/kitchen");
   revalidatePath("/waiter");
+  notifyKitchen();
 }
 
 export async function startKitchenItem(
@@ -22,6 +24,7 @@ export async function startKitchenItem(
   });
 
   if (!item) return actionError("Ticket not found");
+  if (item.voidedAt) return actionError("Ticket was voided");
   if (item.status !== "PENDING") {
     return actionError("Only pending tickets can be started");
   }
@@ -68,6 +71,7 @@ export async function markKitchenItemReady(
   });
 
   if (!item) return actionError("Ticket not found");
+  if (item.voidedAt) return actionError("Ticket was voided");
   if (item.status !== "IN_PROGRESS") {
     return actionError("Only in-progress tickets can be marked ready");
   }

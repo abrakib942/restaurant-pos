@@ -5,6 +5,8 @@ import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { requireRole } from "@/lib/auth";
 import { actionError, type ActionResult } from "@/lib/action-result";
+import { courseForCategoryName } from "@/lib/kitchen-meta";
+import { notifyKitchen } from "@/lib/realtime";
 
 const submitSchema = z.object({
   tableId: z.string().min(1),
@@ -13,6 +15,7 @@ const submitSchema = z.object({
       z.object({
         menuItemId: z.string().min(1),
         qty: z.number().int().min(1).max(99),
+        rush: z.boolean().optional(),
       }),
     )
     .min(1, "Add at least one item"),
@@ -22,7 +25,7 @@ export type SubmitOrderResult = ActionResult & { orderId?: string };
 
 export async function submitOrder(input: {
   tableId: string;
-  items: { menuItemId: string; qty: number }[];
+  items: { menuItemId: string; qty: number; rush?: boolean }[];
 }): Promise<SubmitOrderResult> {
   const session = await requireRole("WAITER");
 
@@ -42,6 +45,9 @@ export async function submitOrder(input: {
   const menuItemIds = [...new Set(parsed.data.items.map((i) => i.menuItemId))];
   const menuItems = await prisma.menuItem.findMany({
     where: { id: { in: menuItemIds }, isAvailable: true },
+    include: {
+      category: { select: { name: true, stationId: true } },
+    },
   });
   if (menuItems.length !== menuItemIds.length) {
     return actionError("One or more items are unavailable");
@@ -57,6 +63,9 @@ export async function submitOrder(input: {
       unitPrice: menuItem.price,
       qty: line.qty,
       status: "PENDING" as const,
+      stationId: menuItem.category.stationId,
+      priority: line.rush ? ("RUSH" as const) : ("NORMAL" as const),
+      course: courseForCategoryName(menuItem.category.name),
     };
   });
 
@@ -80,6 +89,7 @@ export async function submitOrder(input: {
       data: {
         tableId: table.id,
         waiterId: session.userId,
+        source: "WAITER",
         status: "OPEN",
         items: { create: lineCreates },
       },
@@ -98,6 +108,8 @@ export async function submitOrder(input: {
   revalidatePath(`/waiter/tables/${table.id}`);
   revalidatePath("/admin");
   revalidatePath("/admin/tables");
+  revalidatePath("/kitchen");
+  notifyKitchen();
 
   return {
     ok: true,
