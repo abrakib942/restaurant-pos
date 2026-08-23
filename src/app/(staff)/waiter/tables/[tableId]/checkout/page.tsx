@@ -5,18 +5,21 @@ import { prisma } from "@/lib/prisma";
 
 type CheckoutPageProps = {
   params: Promise<{ tableId: string }>;
+  searchParams: Promise<{ orderId?: string }>;
 };
 
 export default async function WaiterCheckoutPage({
   params,
+  searchParams,
 }: CheckoutPageProps) {
   await requireRole("WAITER");
   const { tableId } = await params;
+  const { orderId: orderIdParam } = await searchParams;
 
   const table = await prisma.table.findUnique({ where: { id: tableId } });
   if (!table) notFound();
 
-  const order = await prisma.order.findFirst({
+  const orders = await prisma.order.findMany({
     where: {
       tableId: table.id,
       status: { in: ["OPEN", "BILLING"] },
@@ -25,8 +28,11 @@ export default async function WaiterCheckoutPage({
       items: { orderBy: { createdAt: "asc" } },
       bill: true,
     },
-    orderBy: { createdAt: "desc" },
+    orderBy: { createdAt: "asc" },
   });
+
+  const selected =
+    orders.find((o) => o.id === orderIdParam) ?? orders[0] ?? null;
 
   return (
     <CheckoutScreen
@@ -35,23 +41,32 @@ export default async function WaiterCheckoutPage({
         label: table.label,
         status: table.status,
       }}
-      order={order ? { id: order.id, status: order.status } : null}
+      checks={orders.map((order, index) => ({
+        id: order.id,
+        label: `Check ${index + 1}`,
+        status: order.status,
+      }))}
+      order={selected ? { id: selected.id, status: selected.status } : null}
       lines={
-        order?.items.map((item) => ({
+        selected?.items.map((item) => ({
           id: item.id,
           name: item.name,
           qty: item.qty,
           unitPrice: item.unitPrice.toFixed(2),
           status: item.status,
+          voided: item.voidedAt != null,
         })) ?? []
       }
       bill={
-        order?.bill
+        selected?.bill
           ? {
-              subtotal: order.bill.subtotal.toFixed(2),
-              discount: order.bill.discount.toFixed(2),
-              total: order.bill.total.toFixed(2),
-              paidAt: order.bill.paidAt?.toISOString() ?? null,
+              subtotal: selected.bill.subtotal.toFixed(2),
+              discount: selected.bill.discount.toFixed(2),
+              tax: selected.bill.tax.toFixed(2),
+              tip: selected.bill.tip.toFixed(2),
+              total: selected.bill.total.toFixed(2),
+              paymentMethod: selected.bill.paymentMethod,
+              paidAt: selected.bill.paidAt?.toISOString() ?? null,
             }
           : null
       }
