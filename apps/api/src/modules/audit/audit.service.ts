@@ -35,4 +35,23 @@ export class AuditService {
       },
     });
   }
+
+  async getAdminAuditLog(limit = 100) {
+    const rows = await this.db.client.auditLog.findMany({
+      orderBy: { createdAt: 'desc' },
+      take: limit,
+    });
+
+    return rows.map((row) => ({
+      id: row.id,
+      action: row.action,
+      actorName: row.actorName,
+      target: row.target,
+      meta:
+        row.meta && typeof row.meta === 'object' && !Array.isArray(row.meta)
+          ? (row.meta as Record<string, unknown>)
+          : null,
+      createdAt: row.createdAt.toISOString(),
+    }));
+  }
 }
