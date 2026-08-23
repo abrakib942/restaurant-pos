@@ -6,32 +6,43 @@ Use this before pointing real staff at a hosted instance.
 
 | App / package | Port | Deploy |
 |---------------|------|--------|
-| `@repo/web` | 3000 | Next.js staff + guest UI |
-| `@repo/api` | 5002 | NestJS REST (JWT scaffold) |
+| `@repo/web` | 3000 | Next.js staff + guest UI (no database) |
+| `@repo/api` | 5002 | NestJS REST + business logic |
 | `@repo/db` | — | Prisma migrations only |
 
 Build order: `@repo/db` generate → `@repo/api` build → `@repo/web` build.
 
-Production runs **two processes** (web + api). No storage or separate admin app.
+Production runs **two processes** (web + api).
 
 ## Environment
 
 ### Web (`apps/web/.env`)
 
-- [ ] `DATABASE_URL` — managed Postgres with TLS in production.
-- [ ] `SESSION_SECRET` — cryptographically random, **≥ 32 characters**; rotate invalidates all sessions.
 - [ ] `NEXT_PUBLIC_APP_URL` — exact public origin (`https://your-domain.com`), no trailing slash.
-- [ ] `NEXT_PUBLIC_API_BASE_URL` — public API origin (e.g. `https://api.your-domain.com`).
+- [ ] `NEXT_PUBLIC_API_BASE_URL` — public API origin for server-side fetches (e.g. `https://api.your-domain.com` or internal URL).
+
+Web no longer needs `DATABASE_URL` or `SESSION_SECRET`.
 
 ### API (`apps/api/.env`)
 
-- [ ] `POSTGRES_DATABASE_URL` — same database as web `DATABASE_URL`.
-- [ ] `JWT_SECRET` — **≥ 32 characters**; used when web switches to JWT login.
-- [ ] `CORS_ORIGINS` — comma-separated web origins.
+- [ ] `POSTGRES_DATABASE_URL` — managed Postgres with TLS in production.
+- [ ] `JWT_SECRET` — cryptographically random, **≥ 32 characters**; rotation invalidates all staff sessions.
+- [ ] `CORS_ORIGINS` — comma-separated web origins (e.g. `https://your-domain.com`).
 
 ### Database package (`packages/db/.env`)
 
 - [ ] `DATABASE_URL` — for local `pnpm db:migrate` / `db:seed`.
+
+## Cookies & proxy
+
+**Development:** Next rewrites `/backend/*` → `http://localhost:5002/*`. Browser calls same-origin `/backend/...`; Nest sets `brasa_token` on localhost.
+
+**Production options:**
+
+1. Reverse proxy `/backend` or `/api` on the same parent domain as the web app.
+2. Or set `NEXT_PUBLIC_API_BASE_URL` to the API subdomain and configure `CORS_ORIGINS` + cross-site cookies (not required if using a shared proxy).
+
+Cookie name: `brasa_token` (httpOnly, 12h, path `/`).
 
 ## Database
 
@@ -46,7 +57,7 @@ pnpm install --frozen-lockfile
 pnpm db:generate
 pnpm db:migrate:prod
 pnpm build
-pnpm start                    # turbo: api + web via PM2 use scripts/deploy/start.sh
+pnpm start
 ```
 
 Or individually:
@@ -64,7 +75,7 @@ pnpm --filter @repo/web start
 - [ ] Login lockout is on by default (5 failures / 15 min → 15 min lockout per username; IP cap 30 failures / 15 min).
 - [ ] Change demo PINs before any real service (`admin`, `maya`, etc.).
 - [ ] `.env`, `.cursor/`, and `apps/web/public/uploads/` stay out of git.
-- [ ] Menu uploads are stored on local disk — on serverless hosts, use object storage instead (not in MVP).
+- [ ] Menu uploads land in `apps/web/public/uploads/menu/` — on serverless hosts, use object storage instead.
 
 ## Observability
 
@@ -74,26 +85,15 @@ pnpm --filter @repo/web start
 
 ## E2E smoke (staging)
 
-With DB seeded and web running on `http://localhost:3000`:
+With DB seeded, API on `:5002`, and web on `:3000`:
 
 ```bash
 pnpm exec playwright install chromium
 pnpm test:e2e
 ```
 
-Covers: waitlist seat → waiter order → kitchen fire → expo serve → checkout pay.
+Playwright starts both API and web automatically. Expect 4 passing tests (auth lockout, login, a11y, full-service flow).
 
-## Post-deploy demo script
+## PM2 / scripts
 
-1. Admin: add waitlist party → seat on free table.
-2. Waiter: order on that table → checkout when ready.
-3. Kitchen: start ticket → mark ready.
-4. Waiter: Pass → Served → Generate bill → Mark paid.
-5. Admin: Reports + Audit show the session.
-
-## Known MVP limits
-
-- In-memory SSE pub/sub — single instance only; multi-node needs Redis.
-- Web still uses cookie sessions; API JWT login is scaffolded for a follow-up migration.
-- No card processing — payment method is recorded, not charged.
-- Local menu image uploads — not durable on ephemeral disks.
+See `scripts/deploy/` for `start.sh`, `stop.sh`, and per-app `ecosystem.config.cjs` files.

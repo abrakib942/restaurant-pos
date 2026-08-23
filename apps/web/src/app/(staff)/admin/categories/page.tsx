@@ -1,11 +1,16 @@
 import { CategoriesManager } from "@/components/admin/categories-manager";
-import { prisma } from "@/lib/prisma";
+import { serverApiData } from "@/lib/server-api";
+
+type CategoryRow = {
+  id: string;
+  name: string;
+  sortOrder: number;
+  itemCount: number;
+};
 
 export default async function AdminCategoriesPage() {
-  const categories = await prisma.category.findMany({
-    orderBy: [{ sortOrder: "asc" }, { name: "asc" }],
-    include: { _count: { select: { items: true } } },
-  });
+  const categories =
+    (await serverApiData<CategoryRow[]>("/admin/categories")) ?? [];
 
   return (
     <div className="mx-auto max-w-4xl space-y-6">
@@ -15,14 +20,7 @@ export default async function AdminCategoriesPage() {
           Organize the menu for the floor and guest QR view.
         </p>
       </div>
-      <CategoriesManager
-        categories={categories.map((category) => ({
-          id: category.id,
-          name: category.name,
-          sortOrder: category.sortOrder,
-          itemCount: category._count.items,
-        }))}
-      />
+      <CategoriesManager categories={categories} />
     </div>
   );
 }

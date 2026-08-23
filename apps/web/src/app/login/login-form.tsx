@@ -1,8 +1,8 @@
 "use client";
 
-import { useActionState, useEffect } from "react";
+import { useState } from "react";
+import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { loginAction, type LoginState } from "@/app/actions/auth";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -15,20 +15,58 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { RESTAURANT_NAME } from "@/lib/constants";
+import { ApiClientError, apiMutate } from "@/lib/api-client";
+import { roleHomePath } from "@/lib/role-path";
+import type { Role } from "@/lib/role-path";
 
-const initialState: LoginState = {};
+type LoginData = {
+  redirectTo?: string;
+  user: {
+    userId?: string;
+    id?: string;
+    name: string;
+    username: string;
+    role: string;
+  };
+};
 
 export function LoginForm() {
-  const [state, formAction, pending] = useActionState(
-    loginAction,
-    initialState,
-  );
+  const router = useRouter();
+  const [error, setError] = useState<string | null>(null);
+  const [pending, setPending] = useState(false);
 
-  useEffect(() => {
-    if (state?.error) {
-      toast.error(state.error);
+  async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setError(null);
+    setPending(true);
+
+    const form = event.currentTarget;
+    const formData = new FormData(form);
+    const username = String(formData.get("username") ?? "").trim();
+    const pin = String(formData.get("pin") ?? "");
+
+    try {
+      const body = await apiMutate<LoginData>("/auth/login", "POST", {
+        username,
+        pin,
+      });
+
+      const role = body.data?.user.role as Role | undefined;
+      const redirectTo =
+        body.data?.redirectTo ??
+        (role ? roleHomePath(role) : "/login");
+
+      router.push(redirectTo);
+      router.refresh();
+    } catch (err) {
+      const message =
+        err instanceof ApiClientError ? err.message : "Sign in failed";
+      setError(message);
+      toast.error(message);
+    } finally {
+      setPending(false);
     }
-  }, [state]);
+  }
 
   return (
     <Card className="w-full max-w-md border-border/80 bg-card/90 shadow-none backdrop-blur-sm">
@@ -41,7 +79,7 @@ export function LoginForm() {
           Sign in with your username and 4-digit PIN.
         </CardDescription>
       </CardHeader>
-      <form action={formAction} aria-describedby="login-description">
+      <form onSubmit={handleSubmit} aria-describedby="login-description">
         <CardContent className="space-y-4">
           <div className="space-y-2">
             <Label htmlFor="username">Username</Label>
@@ -69,9 +107,9 @@ export function LoginForm() {
               disabled={pending}
             />
           </div>
-          {state?.error ? (
+          {error ? (
             <p className="text-sm text-destructive" role="alert">
-              {state.error}
+              {error}
             </p>
           ) : null}
         </CardContent>

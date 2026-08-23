@@ -1,11 +1,14 @@
 import "server-only";
 
 import { redirect } from "next/navigation";
-import type { Role } from "@repo/db";
-import { getSession, roleHomePath, type SessionPayload } from "@/lib/session";
+import type { Role } from "@/lib/role-path";
+import { serverApiData } from "@/lib/server-api";
+import { roleHomePath, type SessionPayload } from "@/lib/role-path";
+
+type MeResponse = SessionPayload;
 
 export async function requireSession(): Promise<SessionPayload> {
-  const session = await getSession();
+  const session = await serverApiData<MeResponse>("/auth/me");
   if (!session) {
     redirect("/login");
   }

@@ -10,23 +10,15 @@ import { Observable, throwError } from 'rxjs';
 import { catchError, map } from 'rxjs/operators';
 import { ServiceResult } from '@/common/interfaces/service-result.interface';
 
-export interface ApiResponse<T> {
-  statusCode: number;
-  message: string;
-  data: T;
-  timestamp: string;
-  path?: string;
-}
+export type ApiOk<T> = {
+  ok: true;
+  message?: string;
+  data?: T;
+};
 
 @Injectable()
-export class TransformInterceptor<T> implements NestInterceptor<T, ApiResponse<T>> {
-  intercept(context: ExecutionContext, next: CallHandler): Observable<ApiResponse<T>> {
-    const ctx = context.switchToHttp();
-    const response = ctx.getResponse<{ statusCode?: number }>();
-    const request = ctx.getRequest<{ url?: string }>();
-    const statusCode = response.statusCode || HttpStatus.OK;
-    const path = request.url || '';
-
+export class TransformInterceptor<T> implements NestInterceptor<T, ApiOk<T>> {
+  intercept(context: ExecutionContext, next: CallHandler): Observable<ApiOk<T>> {
     return next.handle().pipe(
       map((data: unknown) => {
         if (data && typeof data === 'object' && 'success' in data) {
@@ -44,22 +36,21 @@ export class TransformInterceptor<T> implements NestInterceptor<T, ApiResponse<T
             throw new HttpException(errorMessage, status);
           }
 
-          return {
-            statusCode,
-            message: result.message || 'Request successful',
-            data: result.data as T,
-            timestamp: new Date().toISOString(),
-            path,
-          };
+          const body: ApiOk<unknown> = { ok: true };
+          if (result.message) body.message = result.message;
+          if (result.data !== undefined) body.data = result.data;
+          return body as ApiOk<T>;
         }
 
-        return {
-          statusCode,
-          message: 'Request successful',
-          data: data as T,
-          timestamp: new Date().toISOString(),
-          path,
-        };
+        if (data && typeof data === 'object' && 'ok' in data) {
+          return data as ApiOk<T>;
+        }
+
+        const body: ApiOk<T> = { ok: true };
+        if (data !== undefined) {
+          body.data = data as T;
+        }
+        return body;
       }),
       catchError((error: unknown) => {
         if (error instanceof HttpException) {

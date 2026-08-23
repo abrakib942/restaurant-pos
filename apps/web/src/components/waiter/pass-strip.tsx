@@ -3,7 +3,8 @@
 import { useEffect, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { AlertTriangle } from "lucide-react";
-import type { WaiterNotificationsData } from "@/lib/waiter-notifications";
+import type { WaiterNotificationsData } from "@/lib/types/waiter-notifications";
+import { apiFetch } from "@/lib/api-client";
 import { isExpoStale } from "@/lib/expo-meta";
 import { formatElapsedMs } from "@/lib/kitchen-meta";
 import { EXPO_AGING_THRESHOLD_MS, POLL_INTERVAL_MS } from "@/lib/constants";
@@ -12,9 +13,10 @@ import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 
 async function fetchNotifications(): Promise<WaiterNotificationsData> {
-  const res = await fetch("/api/waiter/notifications", { cache: "no-store" });
-  if (!res.ok) throw new Error("Failed to load pass queue");
-  return res.json();
+  const body = await apiFetch<WaiterNotificationsData>("/waiter/notifications");
+  return (
+    body.data ?? { ready: [], count: 0, mineCount: 0, staleCount: 0 }
+  );
 }
 
 function useNowTick(active: boolean) {

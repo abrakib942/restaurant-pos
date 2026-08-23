@@ -1,16 +1,10 @@
 "use client";
 
 import { useState, useTransition, useRef } from "react";
+import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { Pencil, Plus, Trash2, Upload } from "lucide-react";
-import type { ActionResult } from "@/lib/action-result";
-import {
-  createMenuItem,
-  deleteMenuItem,
-  toggleMenuItemAvailability,
-  updateMenuItem,
-} from "@/app/actions/menu";
-import { uploadMenuImage } from "@/app/actions/upload";
+import { ApiClientError, apiMutate, clientApiBase } from "@/lib/api-client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -74,12 +68,20 @@ type MenuManagerProps = {
   categories: MenuCategoryOption[];
 };
 
-async function handleResult(result: ActionResult, close?: () => void) {
-  if (result.ok) {
-    toast.success(result.message ?? "Saved");
+async function handleResult(
+  router: ReturnType<typeof useRouter>,
+  fn: () => Promise<void>,
+  close?: () => void,
+) {
+  try {
+    await fn();
+    toast.success("Saved");
     close?.();
-  } else {
-    toast.error(result.error);
+    router.refresh();
+  } catch (err) {
+    toast.error(
+      err instanceof ApiClientError ? err.message : "Request failed",
+    );
   }
 }
 
@@ -89,6 +91,7 @@ function formatPrice(price: string) {
 }
 
 export function MenuManager({ items, categories }: MenuManagerProps) {
+  const router = useRouter();
   const [filter, setFilter] = useState<string>("all");
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState<MenuItemRow | null>(null);
@@ -129,15 +132,29 @@ export function MenuManager({ items, categories }: MenuManagerProps) {
     setUploading(true);
     const formData = new FormData();
     formData.set("file", file);
-    const result = await uploadMenuImage(formData);
-    setUploading(false);
-    if (!result.ok) {
-      toast.error(result.error);
-      return;
-    }
-    if (result.url) {
-      setImageUrl(result.url);
-      toast.success("Image uploaded");
+    try {
+      const res = await fetch(`${clientApiBase()}/admin/menu/upload`, {
+        method: "POST",
+        credentials: "include",
+        body: formData,
+      });
+      const body = (await res.json()) as {
+        ok: boolean;
+        error?: string;
+        data?: { url: string };
+      };
+      if (!body.ok) {
+        toast.error(body.error ?? "Upload failed");
+        return;
+      }
+      if (body.data?.url) {
+        setImageUrl(body.data.url);
+        toast.success("Image uploaded");
+      }
+    } catch {
+      toast.error("Upload failed");
+    } finally {
+      setUploading(false);
     }
   }
 
@@ -180,14 +197,31 @@ export function MenuManager({ items, categories }: MenuManagerProps) {
               key={editing?.id ?? "new"}
               className="space-y-4"
               action={(formData) => {
-                formData.set("categoryId", categoryId);
-                formData.set("isAvailable", available ? "true" : "false");
-                formData.set("imageUrl", imageUrl);
+                const payload = {
+                  name: String(formData.get("name") ?? ""),
+                  description: String(formData.get("description") ?? ""),
+                  price: String(formData.get("price") ?? ""),
+                  imageUrl,
+                  categoryId,
+                  sortOrder: Number(formData.get("sortOrder") ?? 0),
+                  isAvailable: available,
+                };
                 startTransition(async () => {
-                  const result = editing
-                    ? await updateMenuItem(formData)
-                    : await createMenuItem(formData);
-                  await handleResult(result, () => setOpen(false));
+                  await handleResult(
+                    router,
+                    async () => {
+                      if (editing) {
+                        await apiMutate(
+                          `/admin/menu/${editing.id}`,
+                          "PATCH",
+                          payload,
+                        );
+                      } else {
+                        await apiMutate("/admin/menu", "POST", payload);
+                      }
+                    },
+                    () => setOpen(false),
+                  );
                 });
               }}
             >
@@ -400,12 +434,13 @@ export function MenuManager({ items, categories }: MenuManagerProps) {
                         size="sm"
                         checked={item.isAvailable}
                         onCheckedChange={() => {
-                          const formData = new FormData();
-                          formData.set("id", item.id);
                           startTransition(async () => {
-                            await handleResult(
-                              await toggleMenuItemAvailability(formData),
-                            );
+                            await handleResult(router, async () => {
+                              await apiMutate(
+                                `/admin/menu/${item.id}/toggle`,
+                                "POST",
+                              );
+                            });
                           });
                         }}
                         disabled={pending}
@@ -441,12 +476,13 @@ export function MenuManager({ items, categories }: MenuManagerProps) {
                             <AlertDialogCancel>Cancel</AlertDialogCancel>
                             <AlertDialogAction
                               onClick={() => {
-                                const formData = new FormData();
-                                formData.set("id", item.id);
                                 startTransition(async () => {
-                                  await handleResult(
-                                    await deleteMenuItem(formData),
-                                  );
+                                  await handleResult(router, async () => {
+                                    await apiMutate(
+                                      `/admin/menu/${item.id}`,
+                                      "DELETE",
+                                    );
+                                  });
                                 });
                               }}
                             >

@@ -5,7 +5,7 @@ import {
   ClipboardList,
   UtensilsCrossed,
 } from "lucide-react";
-import type { AdminDashboardData } from "@/lib/dashboard";
+import type { AdminDashboardData } from "@/lib/types/dashboard";
 import { formatMoney } from "@/lib/money";
 import {
   Card,

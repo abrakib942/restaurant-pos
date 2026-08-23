@@ -1,5 +1,5 @@
 import Link from "next/link";
-import type { SessionPayload } from "@/lib/session";
+import type { SessionPayload } from "@/lib/role-path";
 import { RESTAURANT_NAME } from "@/lib/constants";
 import { LogoutButton } from "@/components/logout-button";
 import { SkipLink } from "@/components/ui/skip-link";

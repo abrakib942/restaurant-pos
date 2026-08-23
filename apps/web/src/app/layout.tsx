@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import type { ReactNode } from "react";
 import { Fraunces, Outfit } from "next/font/google";
 import { Toaster } from "@/components/ui/sonner";
 import { RESTAURANT_NAME } from "@/lib/constants";
@@ -21,7 +22,7 @@ export const metadata: Metadata = {
   description: "Wood-fired kitchen. One floor, one menu, one pass.",
 };
 
-export default function RootLayout({ children }: LayoutProps<"/">) {
+export default function RootLayout({ children }: { children: ReactNode }) {
   return (
     <html
       lang="en"

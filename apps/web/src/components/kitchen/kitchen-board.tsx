@@ -4,8 +4,8 @@ import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { Flame, Check, ChefHat, Zap, AlertTriangle } from "lucide-react";
-import { markKitchenItemReady, startKitchenItem } from "@/app/actions/kitchen";
-import type { KitchenBoardData, KitchenTicket } from "@/lib/kitchen";
+import { ApiClientError, apiFetch, apiMutate } from "@/lib/api-client";
+import type { KitchenBoardData, KitchenTicket } from "@/lib/types/kitchen";
 import { COURSE_LABELS, formatElapsedMs } from "@/lib/kitchen-meta";
 import { isExpoStale } from "@/lib/expo-meta";
 import { playExpoBumpChime, playNewTicketChime } from "@/lib/chimes";
@@ -16,9 +16,17 @@ import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 
 async function fetchBoard(): Promise<KitchenBoardData> {
-  const res = await fetch("/api/kitchen/board", { cache: "no-store" });
-  if (!res.ok) throw new Error("Failed to load kitchen board");
-  return res.json();
+  const body = await apiFetch<KitchenBoardData>("/kitchen/board");
+  return (
+    body.data ?? {
+      stations: [],
+      pending: [],
+      inProgress: [],
+      ready: [],
+      inProgressCount: 0,
+      cap: 3,
+    }
+  );
 }
 
 function useNowTick(active: boolean) {
@@ -263,24 +271,21 @@ export function KitchenBoard({ initialData }: KitchenBoardProps) {
   const capFull = data.inProgressCount >= data.cap;
   const expoThresholdMin = EXPO_AGING_THRESHOLD_MS / 60_000;
 
-  function runAction(
-    action: () => Promise<
-      { ok: true; message?: string } | { ok: false; error: string }
-    >,
-    blockedMessage?: string,
-  ) {
+  function runAction(action: () => ReturnType<typeof apiMutate>, blockedMessage?: string) {
     if (blockedMessage) {
       toast.error(blockedMessage);
       return;
     }
     startTransition(async () => {
-      const result = await action();
-      if (!result.ok) {
-        toast.error(result.error);
-        return;
+      try {
+        const result = await action();
+        toast.success(result.message ?? "Updated");
+        await queryClient.invalidateQueries({ queryKey: ["kitchen-board"] });
+      } catch (err) {
+        toast.error(
+          err instanceof ApiClientError ? err.message : "Request failed",
+        );
       }
-      toast.success(result.message ?? "Updated");
-      await queryClient.invalidateQueries({ queryKey: ["kitchen-board"] });
     });
   }
 
@@ -363,7 +368,7 @@ export function KitchenBoard({ initialData }: KitchenBoardProps) {
                 actionLabel={capFull ? "Cap full" : "Start"}
                 action={() =>
                   runAction(
-                    () => startKitchenItem(ticket.id),
+                    () => apiMutate(`/kitchen/items/${ticket.id}/start`, "POST"),
                     capFull
                       ? `Only ${data.cap} tickets can be in progress`
                       : undefined,
@@ -393,7 +398,11 @@ export function KitchenBoard({ initialData }: KitchenBoardProps) {
                 accent="progress"
                 pending={pending}
                 actionLabel="Mark ready"
-                action={() => runAction(() => markKitchenItemReady(ticket.id))}
+                action={() =>
+                  runAction(() =>
+                    apiMutate(`/kitchen/items/${ticket.id}/ready`, "POST"),
+                  )
+                }
               />
             ))
           )}

@@ -1,20 +1,27 @@
 import { MenuManager } from "@/components/admin/menu-manager";
-import { prisma } from "@/lib/prisma";
+import { serverApiData } from "@/lib/server-api";
+
+type MenuPageData = {
+  categories: { id: string; name: string }[];
+  items: {
+    id: string;
+    name: string;
+    description: string;
+    price: string;
+    imageUrl: string;
+    isAvailable: boolean;
+    sortOrder: number;
+    categoryId: string;
+    categoryName: string;
+  }[];
+};
 
 export default async function AdminMenuPage() {
-  const [categories, items] = await Promise.all([
-    prisma.category.findMany({
-      orderBy: [{ sortOrder: "asc" }, { name: "asc" }],
-    }),
-    prisma.menuItem.findMany({
-      orderBy: [
-        { category: { sortOrder: "asc" } },
-        { sortOrder: "asc" },
-        { name: "asc" },
-      ],
-      include: { category: { select: { id: true, name: true } } },
-    }),
-  ]);
+  const data =
+    (await serverApiData<MenuPageData>("/admin/menu")) ?? {
+      categories: [],
+      items: [],
+    };
 
   return (
     <div className="mx-auto max-w-5xl space-y-6">
@@ -24,23 +31,7 @@ export default async function AdminMenuPage() {
           Single source of truth for the waiter POS and guest QR menu.
         </p>
       </div>
-      <MenuManager
-        categories={categories.map((category) => ({
-          id: category.id,
-          name: category.name,
-        }))}
-        items={items.map((item) => ({
-          id: item.id,
-          name: item.name,
-          description: item.description,
-          price: item.price.toFixed(2),
-          imageUrl: item.imageUrl,
-          isAvailable: item.isAvailable,
-          sortOrder: item.sortOrder,
-          categoryId: item.categoryId,
-          categoryName: item.category.name,
-        }))}
-      />
+      <MenuManager categories={data.categories} items={data.items} />
     </div>
   );
 }

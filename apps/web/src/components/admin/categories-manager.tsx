@@ -1,14 +1,10 @@
 "use client";
 
 import { useState, useTransition } from "react";
+import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { Pencil, Plus, Trash2 } from "lucide-react";
-import type { ActionResult } from "@/lib/action-result";
-import {
-  createCategory,
-  deleteCategory,
-  updateCategory,
-} from "@/app/actions/categories";
+import { ApiClientError, apiMutate } from "@/lib/api-client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -52,16 +48,8 @@ type CategoriesManagerProps = {
   categories: CategoryRow[];
 };
 
-async function handleResult(result: ActionResult, close?: () => void) {
-  if (result.ok) {
-    toast.success(result.message ?? "Saved");
-    close?.();
-  } else {
-    toast.error(result.error);
-  }
-}
-
 export function CategoriesManager({ categories }: CategoriesManagerProps) {
+  const router = useRouter();
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState<CategoryRow | null>(null);
   const [pending, startTransition] = useTransition();
@@ -101,10 +89,31 @@ export function CategoriesManager({ categories }: CategoriesManagerProps) {
               className="space-y-4"
               action={(formData) => {
                 startTransition(async () => {
-                  const result = editing
-                    ? await updateCategory(formData)
-                    : await createCategory(formData);
-                  await handleResult(result, () => setOpen(false));
+                  const name = String(formData.get("name") ?? "");
+                  const sortOrder = Number(formData.get("sortOrder") ?? 0);
+                  try {
+                    if (editing) {
+                      await apiMutate(
+                        `/admin/categories/${editing.id}`,
+                        "PATCH",
+                        { name, sortOrder },
+                      );
+                    } else {
+                      await apiMutate("/admin/categories", "POST", {
+                        name,
+                        sortOrder,
+                      });
+                    }
+                    toast.success("Saved");
+                    setOpen(false);
+                    router.refresh();
+                  } catch (err) {
+                    toast.error(
+                      err instanceof ApiClientError
+                        ? err.message
+                        : "Request failed",
+                    );
+                  }
                 });
               }}
             >
@@ -212,12 +221,21 @@ export function CategoriesManager({ categories }: CategoriesManagerProps) {
                             <AlertDialogCancel>Cancel</AlertDialogCancel>
                             <AlertDialogAction
                               onClick={() => {
-                                const formData = new FormData();
-                                formData.set("id", category.id);
                                 startTransition(async () => {
-                                  await handleResult(
-                                    await deleteCategory(formData),
-                                  );
+                                  try {
+                                    await apiMutate(
+                                      `/admin/categories/${category.id}`,
+                                      "DELETE",
+                                    );
+                                    toast.success("Category deleted");
+                                    router.refresh();
+                                  } catch (err) {
+                                    toast.error(
+                                      err instanceof ApiClientError
+                                        ? err.message
+                                        : "Request failed",
+                                    );
+                                  }
                                 });
                               }}
                             >

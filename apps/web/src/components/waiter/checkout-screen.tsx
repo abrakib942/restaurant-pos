@@ -11,8 +11,7 @@ import {
   Printer,
   Scissors,
 } from "lucide-react";
-import { generateBill, markBillPaid } from "@/app/actions/service";
-import { splitOrderItems } from "@/app/actions/floor-ops";
+import { ApiClientError, apiMutate } from "@/lib/api-client";
 import {
   computeBillTotals,
   DEFAULT_TAX_RATE,
@@ -173,60 +172,76 @@ export function CheckoutScreen({
   function onGenerate() {
     if (!order) return;
     startTransition(async () => {
-      const result = await generateBill({
-        tableId: table.id,
-        orderId: order.id,
-        discount,
-        taxRatePercent,
-        tip: tip || "0",
-      });
-      if (!result.ok) {
-        toast.error(result.error);
-        return;
+      try {
+        const result = await apiMutate(
+          `/waiter/tables/${table.id}/bill`,
+          "POST",
+          {
+            orderId: order.id,
+            discount,
+            taxRatePercent,
+            tip: tip || "0",
+          },
+        );
+        toast.success(result.message ?? "Bill generated");
+        router.refresh();
+      } catch (err) {
+        toast.error(
+          err instanceof ApiClientError ? err.message : "Request failed",
+        );
       }
-      toast.success(result.message ?? "Bill generated");
-      router.refresh();
     });
   }
 
   function onPay() {
     if (!order) return;
     startTransition(async () => {
-      const result = await markBillPaid({
-        tableId: table.id,
-        orderId: order.id,
-        paymentMethod,
-      });
-      if (!result.ok) {
-        toast.error(result.error);
-        return;
+      try {
+        const result = await apiMutate(
+          `/waiter/tables/${table.id}/pay`,
+          "POST",
+          {
+            orderId: order.id,
+            paymentMethod,
+          },
+        );
+        toast.success(result.message ?? "Paid");
+        router.push("/waiter");
+        router.refresh();
+      } catch (err) {
+        toast.error(
+          err instanceof ApiClientError ? err.message : "Request failed",
+        );
       }
-      toast.success(result.message ?? "Paid");
-      router.push("/waiter");
-      router.refresh();
     });
   }
 
   function onSplit() {
     if (!order || splitIds.length === 0) return;
     startTransition(async () => {
-      const result = await splitOrderItems({
-        tableId: table.id,
-        orderId: order.id,
-        itemIds: splitIds,
-      });
-      if (!result.ok) {
-        toast.error(result.error);
-        return;
-      }
-      toast.success(result.message ?? "Check split");
-      setSplitIds([]);
-      if (result.newOrderId) {
-        router.push(
-          `/waiter/tables/${table.id}/checkout?orderId=${result.newOrderId}`,
+      try {
+        const result = await apiMutate<{ newOrderId: string }>(
+          "/waiter/floor/split",
+          "POST",
+          {
+            tableId: table.id,
+            orderId: order.id,
+            itemIds: splitIds,
+          },
+        );
+        toast.success(result.message ?? "Check split");
+        setSplitIds([]);
+        if (result.data?.newOrderId) {
+          router.push(
+            `/waiter/tables/${table.id}/checkout?orderId=${result.data.newOrderId}`,
+          );
+        }
+        router.refresh();
+      } catch (err) {
+        toast.error(
+          err instanceof ApiClientError ? err.message : "Request failed",
         );
       }
-      router.refresh();
     });
   }
 

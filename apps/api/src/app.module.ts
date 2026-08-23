@@ -9,6 +9,22 @@ import { JwtGuard } from '@/common/guards/jwt.guard';
 import { RolesGuard } from '@/common/guards/roles.guard';
 import { HealthModule } from '@/modules/health/health.module';
 import { AuthModule } from '@/modules/auth/auth.module';
+import { AuditModule } from '@/modules/audit/audit.module';
+import { DashboardModule } from '@/modules/dashboard/dashboard.module';
+import { ReportsModule } from '@/modules/reports/reports.module';
+import { CategoriesModule } from '@/modules/categories/categories.module';
+import { MenuModule } from '@/modules/menu/menu.module';
+import { TablesModule } from '@/modules/tables/tables.module';
+import { StaffModule } from '@/modules/staff/staff.module';
+import { WaitlistModule } from '@/modules/waitlist/waitlist.module';
+import { KitchenModule } from '@/modules/kitchen/kitchen.module';
+import { OrdersModule } from '@/modules/orders/orders.module';
+import { ServiceModule } from '@/modules/service/service.module';
+import { FloorOpsModule } from '@/modules/floor-ops/floor-ops.module';
+import { ServiceRequestsModule } from '@/modules/service-requests/service-requests.module';
+import { GuestModule } from '@/modules/guest/guest.module';
+import { UploadModule } from '@/modules/upload/upload.module';
+import { WaiterModule } from '@/modules/waiter/waiter.module';
 
 @Module({
   imports: [
@@ -20,6 +36,22 @@ import { AuthModule } from '@/modules/auth/auth.module';
     DbModule,
     HealthModule,
     AuthModule,
+    AuditModule,
+    DashboardModule,
+    ReportsModule,
+    CategoriesModule,
+    MenuModule,
+    TablesModule,
+    StaffModule,
+    WaitlistModule,
+    KitchenModule,
+    OrdersModule,
+    ServiceModule,
+    FloorOpsModule,
+    ServiceRequestsModule,
+    GuestModule,
+    UploadModule,
+    WaiterModule,
   ],
   providers: [
     TransformInterceptor,

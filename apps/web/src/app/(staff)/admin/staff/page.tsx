@@ -1,11 +1,15 @@
 import { StaffManager } from "@/components/admin/staff-manager";
-import { prisma } from "@/lib/prisma";
+import { serverApiData } from "@/lib/server-api";
+
+type StaffRow = {
+  id: string;
+  name: string;
+  username: string;
+  role: "WAITER" | "KITCHEN";
+};
 
 export default async function AdminStaffPage() {
-  const staff = await prisma.user.findMany({
-    where: { role: { in: ["WAITER", "KITCHEN"] } },
-    orderBy: [{ role: "asc" }, { name: "asc" }],
-  });
+  const staff = (await serverApiData<StaffRow[]>("/admin/staff")) ?? [];
 
   return (
     <div className="mx-auto max-w-4xl space-y-6">
@@ -15,14 +19,7 @@ export default async function AdminStaffPage() {
           Waiter and kitchen accounts for the floor and pass.
         </p>
       </div>
-      <StaffManager
-        staff={staff.map((user) => ({
-          id: user.id,
-          name: user.name,
-          username: user.username,
-          role: user.role as "WAITER" | "KITCHEN",
-        }))}
-      />
+      <StaffManager staff={staff} />
     </div>
   );
 }

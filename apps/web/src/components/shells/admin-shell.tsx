@@ -4,7 +4,7 @@ import { LogoutButton } from "@/components/logout-button";
 import { AdminNav } from "@/components/admin/admin-nav";
 import { SkipLink } from "@/components/ui/skip-link";
 import { RESTAURANT_NAME } from "@/lib/constants";
-import type { SessionPayload } from "@/lib/session";
+import type { SessionPayload } from "@/lib/role-path";
 
 type AdminShellProps = {
   user: SessionPayload;

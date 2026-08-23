@@ -5,10 +5,12 @@ import { Logger, ValidationPipe } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { NestFactory } from '@nestjs/core';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
+import cookieParser from 'cookie-parser';
 import { AppModule } from './app.module';
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
+  app.use(cookieParser());
   const configService = app.get(ConfigService);
   const logger = new Logger('Bootstrap');
 
@@ -32,7 +34,7 @@ async function bootstrap() {
   const allowedOrigins = corsOrigins?.split(',') || ['http://localhost:3000'];
   app.enableCors({
     origin: allowedOrigins.includes('*') ? true : allowedOrigins,
-    allowedHeaders: ['Content-Type', 'Authorization'],
+    allowedHeaders: ['Content-Type', 'Authorization', 'Cookie'],
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
     credentials: true,
   });
