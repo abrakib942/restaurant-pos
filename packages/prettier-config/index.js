@@ -1,0 +1,15 @@
+export default {
+  arrowParens: "avoid",
+  bracketSpacing: true,
+  endOfLine: "lf",
+  insertPragma: false,
+  printWidth: 100,
+  proseWrap: "preserve",
+  quoteProps: "as-needed",
+  requirePragma: false,
+  semi: true,
+  singleQuote: true,
+  tabWidth: 2,
+  trailingComma: "all",
+  useTabs: false,
+};

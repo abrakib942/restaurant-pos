@@ -2,16 +2,28 @@
 
 Restaurant management MVP: admin, waiter POS, kitchen board, and a public QR menu.
 
+**Monorepo:** Turbo + pnpm with `apps/web` (Next.js), `apps/api` (NestJS scaffold), and `packages/db` (Prisma).
+
 ## Quick start
 
 ```bash
+pnpm install
 pnpm db:up
 pnpm db:migrate
 pnpm db:seed
 pnpm dev
 ```
 
-Postgres runs in Docker on **localhost:5433** (host 5432 is already in use), user/password/db `brasa`. Copy `.env.example` to `.env` if needed.
+- Web: http://localhost:3000
+- API: http://localhost:5002 (Swagger at `/api/docs`)
+
+Copy env files:
+
+- `apps/web/.env.example` → `apps/web/.env`
+- `apps/api/.env.example` → `apps/api/.env`
+- `packages/db/.env.example` → `packages/db/.env` (or symlink `DATABASE_URL` from web)
+
+Postgres runs in Docker on **localhost:5433**, user/password/db `brasa`.
 
 ## Demo logins
 
@@ -24,22 +36,24 @@ Open `/login` (or **Staff entrance** on `/`). Username + 4-digit PIN.
 | Waiter  | julian   | `/waiter`  | 3333 |
 | Kitchen | kenji    | `/kitchen` | 4444 |
 
-Set `SESSION_SECRET` (32+ characters) and `NEXT_PUBLIC_APP_URL` in `.env` — see `.env.example`. Table QR codes encode `{NEXT_PUBLIC_APP_URL}/menu/{qrSlug}`.
+Set `SESSION_SECRET` (32+ characters) and `NEXT_PUBLIC_APP_URL` in `apps/web/.env`.
 
-QR menu (no login): `/menu/t-01` … `/menu/t-10` — read-only; guests tell their waiter to order.
+QR menu (no login): `/menu/t-01` … `/menu/t-10`.
 
-## MVP notes
+## Scripts
 
-- Admin `/admin` shows today’s sales, open tickets, floor status, and a top-items chart (from paid checks).
-- Admin **Reports** (`/admin/reports`) — date-range sales, voids, by waiter/hour.
-- Admin **Audit** (`/admin/audit`) — sign-ins, seating, billing, voids.
-- Login lockout after 5 failed PIN attempts (15-minute window).
-- Kitchen board and waiter notifications poll every 4s with TanStack Query (`refetchInterval`). SSE is preferred when connected.
-- Waiter and kitchen screens are tablet-first; the QR menu is phone-first.
+| Command | Description |
+|---------|-------------|
+| `pnpm dev` | Start web + api (turbo) |
+| `pnpm dev:web` | Next.js only |
+| `pnpm dev:api` | NestJS only |
+| `pnpm build` | Build all packages |
+| `pnpm test:e2e` | Playwright (web) |
+| `pnpm db:*` | Prisma via `@repo/db` |
 
 ## Production & tests
 
-See [docs/DEPLOY.md](docs/DEPLOY.md) for the deploy checklist.
+See [docs/DEPLOY.md](docs/DEPLOY.md) and [docs/api-v1.md](docs/api-v1.md).
 
 ```bash
 pnpm exec playwright install chromium
