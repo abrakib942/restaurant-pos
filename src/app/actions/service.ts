@@ -5,6 +5,13 @@ import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { requireRole } from "@/lib/auth";
 import { actionError, actionOk, type ActionResult } from "@/lib/action-result";
+import {
+  computeBillTotals,
+  parseMoneyInput,
+  parseTaxRatePercent,
+} from "@/lib/billing";
+import { notifyKitchen } from "@/lib/realtime";
+import { AuditAction, writeAuditLog } from "@/lib/audit";
 
 function revalidateService(tableId: string) {
   revalidatePath("/waiter");
@@ -13,12 +20,13 @@ function revalidateService(tableId: string) {
   revalidatePath("/kitchen");
   revalidatePath("/admin");
   revalidatePath("/admin/tables");
+  notifyKitchen();
 }
 
 export async function markItemServed(
   orderItemId: string,
 ): Promise<ActionResult> {
-  const session = await requireRole("WAITER");
+  await requireRole("WAITER");
 
   const item = await prisma.orderItem.findUnique({
     where: { id: orderItemId },
@@ -30,8 +38,9 @@ export async function markItemServed(
   });
 
   if (!item) return actionError("Item not found");
-  if (item.order.waiterId !== session.userId) {
-    return actionError("This ticket belongs to another waiter");
+  if (item.voidedAt) return actionError("Item was voided");
+  if (!["OPEN", "BILLING"].includes(item.order.status)) {
+    return actionError("Order is no longer active");
   }
   if (item.status !== "READY") {
     return actionError("Only ready items can be marked served");
@@ -49,60 +58,77 @@ export async function markItemServed(
   return actionOk("Marked served");
 }
 
-const discountSchema = z.object({
+const generateBillSchema = z.object({
   tableId: z.string().min(1),
-  discount: z
-    .string()
-    .trim()
-    .regex(/^\d+(\.\d{1,2})?$/, "Discount must be a valid amount")
-    .transform((v) => Number(v))
-    .refine((v) => v >= 0, "Discount cannot be negative"),
+  orderId: z.string().min(1),
+  discount: z.string().trim(),
+  taxRatePercent: z.string().trim(),
+  tip: z.string().trim(),
 });
 
 export async function generateBill(input: {
   tableId: string;
+  orderId: string;
   discount: string;
+  taxRatePercent: string;
+  tip: string;
 }): Promise<ActionResult> {
-  await requireRole("WAITER");
+  const session = await requireRole("WAITER");
 
-  const parsed = discountSchema.safeParse(input);
+  const parsed = generateBillSchema.safeParse(input);
   if (!parsed.success) {
-    return actionError(parsed.error.issues[0]?.message ?? "Invalid discount");
+    return actionError(parsed.error.issues[0]?.message ?? "Invalid bill");
   }
+
+  const discount = parseMoneyInput(parsed.data.discount);
+  if (discount === null) return actionError("Discount must be a valid amount");
+
+  const taxRate = parseTaxRatePercent(parsed.data.taxRatePercent);
+  if (taxRate === null) {
+    return actionError("Tax rate must be between 0 and 30%");
+  }
+
+  const tip = parseMoneyInput(parsed.data.tip || "0");
+  if (tip === null) return actionError("Tip must be a valid amount");
 
   const order = await prisma.order.findFirst({
     where: {
+      id: parsed.data.orderId,
       tableId: parsed.data.tableId,
       status: "OPEN",
     },
     include: { items: true, bill: true },
-    orderBy: { createdAt: "desc" },
   });
 
-  if (!order) {
-    return actionError("No open order for this table");
-  }
-  if (order.items.length === 0) {
-    return actionError("Order has no items");
-  }
-  if (order.bill) {
-    return actionError("Bill already exists");
-  }
+  if (!order) return actionError("No open order for this check");
 
-  const subtotal = order.items.reduce(
+  const billableItems = order.items.filter((item) => !item.voidedAt);
+  if (billableItems.length === 0) {
+    return actionError("No billable items on this check");
+  }
+  if (order.bill) return actionError("Bill already exists");
+
+  const subtotal = billableItems.reduce(
     (sum, item) => sum + Number(item.unitPrice) * item.qty,
     0,
   );
-  const discount = Math.min(parsed.data.discount, subtotal);
-  const total = Math.max(0, subtotal - discount);
+
+  const totals = computeBillTotals({
+    subtotal,
+    discount,
+    taxRate,
+    tip,
+  });
 
   await prisma.$transaction([
     prisma.bill.create({
       data: {
         orderId: order.id,
-        subtotal: subtotal.toFixed(2),
-        discount: discount.toFixed(2),
-        total: total.toFixed(2),
+        subtotal: totals.subtotal.toFixed(2),
+        discount: totals.discount.toFixed(2),
+        tax: totals.tax.toFixed(2),
+        tip: totals.tip.toFixed(2),
+        total: totals.total.toFixed(2),
       },
     }),
     prisma.order.update({
@@ -113,43 +139,114 @@ export async function generateBill(input: {
       where: { id: parsed.data.tableId },
       data: { status: "BILLING" },
     }),
+    prisma.serviceRequest.updateMany({
+      where: {
+        tableId: parsed.data.tableId,
+        type: "REQUEST_BILL",
+        status: "OPEN",
+      },
+      data: {
+        status: "DONE",
+        acknowledgedAt: new Date(),
+      },
+    }),
   ]);
+
+  await writeAuditLog({
+    action: AuditAction.BillGenerated,
+    actorId: session.userId,
+    actorName: session.name,
+    target: order.id,
+    meta: {
+      tableId: parsed.data.tableId,
+      total: totals.total.toFixed(2),
+    },
+  });
 
   revalidateService(parsed.data.tableId);
   return actionOk("Bill generated");
 }
 
-export async function markBillPaid(tableId: string): Promise<ActionResult> {
-  await requireRole("WAITER");
+const payBillSchema = z.object({
+  tableId: z.string().min(1),
+  orderId: z.string().min(1),
+  paymentMethod: z.enum(["CASH", "CARD", "OTHER"]),
+});
+
+export async function markBillPaid(input: {
+  tableId: string;
+  orderId: string;
+  paymentMethod: "CASH" | "CARD" | "OTHER";
+}): Promise<ActionResult> {
+  const session = await requireRole("WAITER");
+
+  const parsed = payBillSchema.safeParse(input);
+  if (!parsed.success) {
+    return actionError(parsed.error.issues[0]?.message ?? "Invalid payment");
+  }
 
   const order = await prisma.order.findFirst({
     where: {
-      tableId,
+      id: parsed.data.orderId,
+      tableId: parsed.data.tableId,
       status: "BILLING",
     },
     include: { bill: true },
-    orderBy: { createdAt: "desc" },
   });
 
-  if (!order) return actionError("No billing order for this table");
+  if (!order) return actionError("No billing check for this order");
   if (!order.bill) return actionError("Generate a bill first");
   if (order.bill.paidAt) return actionError("Bill already paid");
 
   await prisma.$transaction([
     prisma.bill.update({
       where: { id: order.bill.id },
-      data: { paidAt: new Date() },
+      data: {
+        paidAt: new Date(),
+        paymentMethod: parsed.data.paymentMethod,
+      },
     }),
     prisma.order.update({
       where: { id: order.id },
       data: { status: "PAID" },
     }),
-    prisma.table.update({
-      where: { id: tableId },
-      data: { status: "AVAILABLE" },
-    }),
   ]);
 
-  revalidateService(tableId);
-  return actionOk("Payment recorded — table is free");
+  const remaining = await prisma.order.findMany({
+    where: {
+      tableId: parsed.data.tableId,
+      status: { in: ["OPEN", "BILLING"] },
+    },
+    select: { status: true },
+  });
+
+  const tableStatus = remaining.some((o) => o.status === "BILLING")
+    ? ("BILLING" as const)
+    : remaining.some((o) => o.status === "OPEN")
+      ? ("OCCUPIED" as const)
+      : ("AVAILABLE" as const);
+
+  await prisma.table.update({
+    where: { id: parsed.data.tableId },
+    data: { status: tableStatus },
+  });
+
+  await writeAuditLog({
+    action: AuditAction.BillPaid,
+    actorId: session.userId,
+    actorName: session.name,
+    target: order.id,
+    meta: {
+      tableId: parsed.data.tableId,
+      paymentMethod: parsed.data.paymentMethod,
+      total: order.bill.total.toFixed(2),
+    },
+  });
+
+  revalidateService(parsed.data.tableId);
+  return actionOk(
+    tableStatus === "AVAILABLE"
+      ? "Payment recorded — table is free"
+      : "Payment recorded",
+  );
 }

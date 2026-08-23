@@ -2,6 +2,8 @@ import "dotenv/config";
 import bcrypt from "bcryptjs";
 import { PrismaPg } from "@prisma/adapter-pg";
 import { PrismaClient, Role } from "../src/generated/prisma/client";
+import { courseForCategoryName } from "../src/lib/kitchen-meta";
+import { computeBillTotals } from "../src/lib/billing";
 
 const adapter = new PrismaPg({
   connectionString: process.env.DATABASE_URL!,
@@ -229,12 +231,32 @@ const menu = [
   },
 ];
 
+const kitchenStations = [
+  { name: "Grill", sortOrder: 1 },
+  { name: "Cold", sortOrder: 2 },
+  { name: "Bar", sortOrder: 3 },
+  { name: "Dessert", sortOrder: 4 },
+] as const;
+
+const categoryStationNames: Record<string, string> = {
+  "Small Plates": "Cold",
+  "Wood-Fired": "Grill",
+  "Greens & Sides": "Cold",
+  Sweets: "Dessert",
+  Bar: "Bar",
+};
+
 async function main() {
   await prisma.bill.deleteMany();
   await prisma.orderItem.deleteMany();
   await prisma.order.deleteMany();
+  await prisma.serviceRequest.deleteMany();
+  await prisma.waitlistEntry.deleteMany();
+  await prisma.loginAttempt.deleteMany();
+  await prisma.auditLog.deleteMany();
   await prisma.menuItem.deleteMany();
   await prisma.category.deleteMany();
+  await prisma.kitchenStation.deleteMany();
   await prisma.table.deleteMany();
   await prisma.user.deleteMany();
 
@@ -249,11 +271,21 @@ async function main() {
     });
   }
 
+  for (const station of kitchenStations) {
+    await prisma.kitchenStation.create({ data: station });
+  }
+
+  const stationsByName = Object.fromEntries(
+    (await prisma.kitchenStation.findMany()).map((s) => [s.name, s.id]),
+  );
+
   for (const category of menu) {
+    const stationName = categoryStationNames[category.name];
     await prisma.category.create({
       data: {
         name: category.name,
         sortOrder: category.sortOrder,
+        stationId: stationName ? stationsByName[stationName] : undefined,
         items: {
           create: category.items.map((item) => ({
             name: item.name,
@@ -268,6 +300,30 @@ async function main() {
     });
   }
 
+  const categories = await prisma.category.findMany();
+  const categoryMeta = new Map(
+    categories.map((c) => [
+      c.name,
+      {
+        stationId: c.stationId,
+        course: courseForCategoryName(c.name),
+      },
+    ]),
+  );
+
+  const itemMeta = (menuItem: {
+    id: string;
+    name: string;
+    categoryId: string;
+  }) => {
+    const category = categories.find((c) => c.id === menuItem.categoryId);
+    const meta = category ? categoryMeta.get(category.name) : undefined;
+    return {
+      stationId: meta?.stationId ?? null,
+      course: meta?.course ?? 2,
+    };
+  };
+
   await prisma.table.createMany({
     data: Array.from({ length: 10 }, (_, index) => {
       const n = index + 1;
@@ -278,16 +334,288 @@ async function main() {
     }),
   });
 
-  const [userCount, categoryCount, itemCount, tableCount] = await Promise.all([
+  const maya = await prisma.user.findUniqueOrThrow({
+    where: { username: "maya" },
+  });
+  const julian = await prisma.user.findUniqueOrThrow({
+    where: { username: "julian" },
+  });
+  const tables = await prisma.table.findMany({
+    orderBy: { label: "asc" },
+  });
+  const items = await prisma.menuItem.findMany({
+    where: { isAvailable: true },
+    orderBy: { name: "asc" },
+  });
+
+  const byName = (name: string) => {
+    const found = items.find((i) => i.name === name);
+    if (!found) throw new Error(`Missing menu item: ${name}`);
+    return found;
+  };
+
+  const hoursAgo = (h: number) => new Date(Date.now() - h * 60 * 60 * 1000);
+  const minutesAgo = (m: number) => new Date(Date.now() - m * 60 * 1000);
+
+  // Paid checks from earlier today → admin dashboard sales / top items
+  const paidSpecs = [
+    {
+      table: tables[0]!,
+      waiterId: maya.id,
+      paidAt: hoursAgo(3),
+      lines: [
+        { item: byName("Heritage Chicken"), qty: 2 },
+        { item: byName("Little Gem Salad"), qty: 1 },
+        { item: byName("Skin-Contact Pour"), qty: 2 },
+      ],
+      discount: "0",
+    },
+    {
+      table: tables[1]!,
+      waiterId: julian.id,
+      paidAt: hoursAgo(2),
+      lines: [
+        { item: byName("Brasa Burger"), qty: 2 },
+        { item: byName("Charred Broccolini"), qty: 1 },
+        { item: byName("Smoked Old Fashioned"), qty: 2 },
+      ],
+      discount: "5.00",
+    },
+    {
+      table: tables[2]!,
+      waiterId: maya.id,
+      paidAt: hoursAgo(1),
+      lines: [
+        { item: byName("Charred Octopus"), qty: 1 },
+        { item: byName("Dry-Aged Ribeye"), qty: 1 },
+        { item: byName("Heritage Chicken"), qty: 1 },
+      ],
+      discount: "0",
+    },
+  ] as const;
+
+  for (const spec of paidSpecs) {
+    const subtotal = spec.lines.reduce(
+      (sum, line) => sum + Number(line.item.price) * line.qty,
+      0,
+    );
+    const discount = Math.min(Number(spec.discount), subtotal);
+    const totals = computeBillTotals({
+      subtotal,
+      discount,
+      taxRate: 0.08875,
+      tip: Math.round(subtotal * 0.15 * 100) / 100,
+    });
+
+    await prisma.order.create({
+      data: {
+        tableId: spec.table.id,
+        waiterId: spec.waiterId,
+        status: "PAID",
+        createdAt: hoursAgo(4),
+        items: {
+          create: spec.lines.map((line) => {
+            const meta = itemMeta(line.item);
+            return {
+              menuItemId: line.item.id,
+              name: line.item.name,
+              unitPrice: line.item.price,
+              qty: line.qty,
+              status: "SERVED",
+              stationId: meta.stationId,
+              course: meta.course,
+              startedAt: hoursAgo(3.5),
+              readyAt: hoursAgo(3.2),
+              servedAt: hoursAgo(3),
+            };
+          }),
+        },
+        bill: {
+          create: {
+            subtotal: totals.subtotal.toFixed(2),
+            discount: totals.discount.toFixed(2),
+            tax: totals.tax.toFixed(2),
+            tip: totals.tip.toFixed(2),
+            total: totals.total.toFixed(2),
+            paymentMethod: "CARD",
+            paidAt: spec.paidAt,
+            createdAt: spec.paidAt,
+          },
+        },
+      },
+    });
+  }
+
+  // Live floor: table 4 occupied with kitchen tickets
+  const liveTable = tables[3]!;
+  await prisma.table.update({
+    where: { id: liveTable.id },
+    data: { status: "OCCUPIED" },
+  });
+
+  const chicken = byName("Heritage Chicken");
+  const burger = byName("Brasa Burger");
+  const salad = byName("Little Gem Salad");
+  const cocktail = byName("Smoked Old Fashioned");
+
+  await prisma.order.create({
+    data: {
+      tableId: liveTable.id,
+      waiterId: maya.id,
+      status: "OPEN",
+      createdAt: minutesAgo(25),
+      items: {
+        create: [
+          {
+            menuItemId: salad.id,
+            name: salad.name,
+            unitPrice: salad.price,
+            qty: 1,
+            status: "READY",
+            stationId: itemMeta(salad).stationId,
+            course: itemMeta(salad).course,
+            startedAt: minutesAgo(18),
+            readyAt: minutesAgo(8),
+          },
+          {
+            menuItemId: chicken.id,
+            name: chicken.name,
+            unitPrice: chicken.price,
+            qty: 1,
+            status: "IN_PROGRESS",
+            stationId: itemMeta(chicken).stationId,
+            course: itemMeta(chicken).course,
+            startedAt: minutesAgo(10),
+          },
+          {
+            menuItemId: burger.id,
+            name: burger.name,
+            unitPrice: burger.price,
+            qty: 1,
+            status: "PENDING",
+            priority: "RUSH",
+            stationId: itemMeta(burger).stationId,
+            course: itemMeta(burger).course,
+          },
+          {
+            menuItemId: cocktail.id,
+            name: cocktail.name,
+            unitPrice: cocktail.price,
+            qty: 2,
+            status: "PENDING",
+            stationId: itemMeta(cocktail).stationId,
+            course: itemMeta(cocktail).course,
+          },
+        ],
+      },
+    },
+  });
+
+  // Second open table for julian — one ready (floor-wide serve demo)
+  const liveTable2 = tables[4]!;
+  await prisma.table.update({
+    where: { id: liveTable2.id },
+    data: { status: "OCCUPIED" },
+  });
+  const octopus = byName("Charred Octopus");
+  const ricotta = byName("Whipped Ricotta");
+  await prisma.order.create({
+    data: {
+      tableId: liveTable2.id,
+      waiterId: julian.id,
+      status: "OPEN",
+      createdAt: minutesAgo(15),
+      items: {
+        create: [
+          {
+            menuItemId: octopus.id,
+            name: octopus.name,
+            unitPrice: octopus.price,
+            qty: 1,
+            status: "READY",
+            stationId: itemMeta(octopus).stationId,
+            course: itemMeta(octopus).course,
+            startedAt: minutesAgo(12),
+            readyAt: minutesAgo(4),
+          },
+          {
+            menuItemId: ricotta.id,
+            name: ricotta.name,
+            unitPrice: ricotta.price,
+            qty: 1,
+            status: "PENDING",
+            stationId: itemMeta(ricotta).stationId,
+            course: itemMeta(ricotta).course,
+          },
+        ],
+      },
+    },
+  });
+
+  await prisma.waitlistEntry.createMany({
+    data: [
+      {
+        partyName: "Rivera",
+        partySize: 4,
+        phone: "555-0142",
+        status: "WAITING",
+        quotedMinutes: 25,
+        createdAt: minutesAgo(12),
+      },
+      {
+        partyName: "Kim · 2",
+        partySize: 2,
+        status: "NOTIFIED",
+        quotedMinutes: 15,
+        createdAt: minutesAgo(28),
+      },
+      {
+        partyName: "Okafor",
+        partySize: 6,
+        status: "WAITING",
+        quotedMinutes: 35,
+        createdAt: minutesAgo(5),
+      },
+    ],
+  });
+
+  // Guest QR demo: open call on table 6
+  await prisma.serviceRequest.create({
+    data: {
+      tableId: tables[5]!.id,
+      type: "CALL_WAITER",
+      createdAt: minutesAgo(2),
+    },
+  });
+
+  const [
+    userCount,
+    categoryCount,
+    itemCount,
+    tableCount,
+    orderCount,
+    billCount,
+    waitlistCount,
+    serviceCount,
+  ] = await Promise.all([
     prisma.user.count(),
     prisma.category.count(),
     prisma.menuItem.count(),
     prisma.table.count(),
+    prisma.order.count(),
+    prisma.bill.count(),
+    prisma.waitlistEntry.count({
+      where: { status: { in: ["WAITING", "NOTIFIED"] } },
+    }),
+    prisma.serviceRequest.count({ where: { status: "OPEN" } }),
   ]);
 
   console.log("Seeded Brasa demo data:");
   console.log(
     `  users: ${userCount}, categories: ${categoryCount}, items: ${itemCount}, tables: ${tableCount}`,
+  );
+  console.log(
+    `  orders: ${orderCount}, paid bills: ${billCount}, waitlist: ${waitlistCount} active, service calls: ${serviceCount} open`,
   );
   console.log("Demo logins (username / PIN):");
   console.log("  admin / 1111  (ADMIN)");
