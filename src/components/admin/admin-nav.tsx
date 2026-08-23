@@ -8,15 +8,21 @@ import {
   Armchair,
   Users,
   UtensilsCrossed,
+  ListOrdered,
+  BarChart3,
+  ScrollText,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 const nav = [
   { href: "/admin", label: "Dashboard", icon: LayoutDashboard },
+  { href: "/admin/waitlist", label: "Waitlist", icon: ListOrdered },
   { href: "/admin/categories", label: "Categories", icon: Tags },
   { href: "/admin/tables", label: "Tables", icon: Armchair },
   { href: "/admin/staff", label: "Staff", icon: Users },
   { href: "/admin/menu", label: "Menu", icon: UtensilsCrossed },
+  { href: "/admin/reports", label: "Reports", icon: BarChart3 },
+  { href: "/admin/audit", label: "Audit", icon: ScrollText },
 ] as const;
 
 export function AdminNav() {

@@ -2,6 +2,7 @@ import Link from "next/link";
 import { Separator } from "@/components/ui/separator";
 import { LogoutButton } from "@/components/logout-button";
 import { AdminNav } from "@/components/admin/admin-nav";
+import { SkipLink } from "@/components/ui/skip-link";
 import { RESTAURANT_NAME } from "@/lib/constants";
 import type { SessionPayload } from "@/lib/session";
 
@@ -13,6 +14,7 @@ type AdminShellProps = {
 export function AdminShell({ user, children }: AdminShellProps) {
   return (
     <div className="flex min-h-dvh bg-background">
+      <SkipLink />
       <aside className="hidden w-60 shrink-0 flex-col border-r border-border bg-sidebar md:flex">
         <div className="px-5 py-6">
           <p className="font-heading text-2xl tracking-tight text-primary">
@@ -56,6 +58,12 @@ export function AdminShell({ user, children }: AdminShellProps) {
               Dashboard
             </Link>
             <Link
+              href="/admin/waitlist"
+              className="whitespace-nowrap text-muted-foreground"
+            >
+              Waitlist
+            </Link>
+            <Link
               href="/admin/categories"
               className="whitespace-nowrap text-muted-foreground"
             >
@@ -79,9 +87,23 @@ export function AdminShell({ user, children }: AdminShellProps) {
             >
               Menu
             </Link>
+            <Link
+              href="/admin/reports"
+              className="whitespace-nowrap text-muted-foreground"
+            >
+              Reports
+            </Link>
+            <Link
+              href="/admin/audit"
+              className="whitespace-nowrap text-muted-foreground"
+            >
+              Audit
+            </Link>
           </div>
         </div>
-        <main className="flex-1 p-4 sm:p-6 lg:p-8">{children}</main>
+        <main id="main-content" className="flex-1 p-4 sm:p-6 lg:p-8">
+          {children}
+        </main>
       </div>
     </div>
   );
