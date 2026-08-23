@@ -31,26 +31,23 @@ export class HttpExceptionFilter implements ExceptionFilter {
       errorMessage =
         typeof msgValue === 'string'
           ? msgValue
-          : msgValue instanceof Error
-            ? msgValue.message
-            : 'Internal server error';
+          : Array.isArray(msgValue)
+            ? msgValue.join(', ')
+            : msgValue instanceof Error
+              ? msgValue.message
+              : 'Internal server error';
     } else {
       errorMessage = 'Internal server error';
     }
-
-    const errorResponse = {
-      statusCode: status,
-      timestamp: new Date().toISOString(),
-      path: request.url,
-      method: request.method,
-      message: errorMessage,
-    };
 
     this.logger.error(
       `${request.method} ${request.url}`,
       exception instanceof Error ? exception.stack : 'Unknown error',
     );
 
-    response.status(status).json(errorResponse);
+    response.status(status).json({
+      ok: false,
+      error: errorMessage,
+    });
   }
 }
