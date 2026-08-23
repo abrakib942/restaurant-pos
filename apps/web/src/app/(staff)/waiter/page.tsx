@@ -2,27 +2,29 @@ import { TableGrid } from "@/components/waiter/table-grid";
 import { PassStrip } from "@/components/waiter/pass-strip";
 import { WaitlistStrip } from "@/components/waiter/waitlist-strip";
 import { requireRole } from "@/lib/auth";
-import { prisma } from "@/lib/prisma";
-import { getActiveWaitlist } from "@/lib/waitlist";
+import type { WaitlistParty } from "@/lib/waitlist";
+import { serverApiData } from "@/lib/server-api";
+
+type FloorData = {
+  tables: {
+    id: string;
+    label: string;
+    status: "AVAILABLE" | "OCCUPIED" | "BILLING";
+    openOrderItemCount: number;
+  }[];
+  waitlist: WaitlistParty[];
+};
 
 export default async function WaiterHomePage() {
   await requireRole("WAITER");
 
-  const [tables, waitlist] = await Promise.all([
-    prisma.table.findMany({
-      include: {
-        orders: {
-          where: { status: "OPEN" },
-          include: { _count: { select: { items: true } } },
-          take: 1,
-          orderBy: { createdAt: "desc" },
-        },
-      },
-    }),
-    getActiveWaitlist(5),
-  ]);
+  const floor =
+    (await serverApiData<FloorData>("/waiter/floor")) ?? {
+      tables: [],
+      waitlist: [],
+    };
 
-  const sorted = [...tables].sort((a, b) =>
+  const sorted = [...floor.tables].sort((a, b) =>
     a.label.localeCompare(b.label, undefined, { numeric: true }),
   );
 
@@ -34,14 +36,14 @@ export default async function WaiterHomePage() {
           Select a table to take or add to an order.
         </p>
       </div>
-      <WaitlistStrip parties={waitlist} />
+      <WaitlistStrip parties={floor.waitlist} />
       <PassStrip />
       <TableGrid
         tables={sorted.map((table) => ({
           id: table.id,
           label: table.label,
           status: table.status,
-          openOrderItemCount: table.orders[0]?._count.items ?? 0,
+          openOrderItemCount: table.openOrderItemCount,
         }))}
       />
     </div>

@@ -4,15 +4,8 @@ import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { Bell, Plus, UserCheck, X } from "lucide-react";
-import type { ActionResult } from "@/lib/action-result";
 import type { WaitlistParty } from "@/lib/waitlist";
-import {
-  cancelWaitlistEntry,
-  createWaitlistEntry,
-  markWaitlistNoShow,
-  notifyWaitlistEntry,
-  seatWaitlistEntry,
-} from "@/app/actions/waitlist";
+import { ApiClientError, apiMutate } from "@/lib/api-client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -77,13 +70,19 @@ export function WaitlistManager({
   const [tableId, setTableId] = useState("");
   const [pending, startTransition] = useTransition();
 
-  async function handleResult(result: ActionResult, close?: () => void) {
-    if (result.ok) {
-      toast.success(result.message ?? "Updated");
+  async function handleMutation(
+    fn: () => Promise<void>,
+    close?: () => void,
+  ) {
+    try {
+      await fn();
+      toast.success("Updated");
       close?.();
       router.refresh();
-    } else {
-      toast.error(result.error);
+    } catch (err) {
+      toast.error(
+        err instanceof ApiClientError ? err.message : "Request failed",
+      );
     }
   }
 
@@ -115,9 +114,16 @@ export function WaitlistManager({
               className="space-y-4"
               action={(formData) => {
                 startTransition(async () => {
-                  await handleResult(await createWaitlistEntry(formData), () =>
-                    setAddOpen(false),
-                  );
+                  await handleMutation(async () => {
+                    await apiMutate("/admin/waitlist", "POST", {
+                      partyName: String(formData.get("partyName") ?? ""),
+                      partySize: Number(formData.get("partySize") ?? 1),
+                      phone: String(formData.get("phone") ?? "") || undefined,
+                      quotedMinutes: formData.get("quotedMinutes")
+                        ? Number(formData.get("quotedMinutes"))
+                        : undefined,
+                    });
+                  }, () => setAddOpen(false));
                 });
               }}
             >
@@ -236,9 +242,12 @@ export function WaitlistManager({
                           disabled={pending}
                           onClick={() => {
                             startTransition(async () => {
-                              await handleResult(
-                                await notifyWaitlistEntry(entry.id),
-                              );
+                              await handleMutation(async () => {
+                                await apiMutate(
+                                  `/admin/waitlist/${entry.id}/notify`,
+                                  "POST",
+                                );
+                              });
                             });
                           }}
                         >
@@ -264,9 +273,12 @@ export function WaitlistManager({
                           disabled={pending}
                           onClick={() => {
                             startTransition(async () => {
-                              await handleResult(
-                                await markWaitlistNoShow(entry.id),
-                              );
+                              await handleMutation(async () => {
+                                await apiMutate(
+                                  `/admin/waitlist/${entry.id}/no-show`,
+                                  "POST",
+                                );
+                              });
                             });
                           }}
                         >
@@ -280,9 +292,12 @@ export function WaitlistManager({
                         disabled={pending}
                         onClick={() => {
                           startTransition(async () => {
-                            await handleResult(
-                              await cancelWaitlistEntry(entry.id),
-                            );
+                            await handleMutation(async () => {
+                              await apiMutate(
+                                `/admin/waitlist/${entry.id}/cancel`,
+                                "POST",
+                              );
+                            });
                           });
                         }}
                       >
@@ -339,13 +354,13 @@ export function WaitlistManager({
                   onClick={() => {
                     if (!seatEntry) return;
                     startTransition(async () => {
-                      await handleResult(
-                        await seatWaitlistEntry({
-                          entryId: seatEntry.id,
-                          tableId,
-                        }),
-                        () => setSeatEntry(null),
-                      );
+                      await handleMutation(async () => {
+                        await apiMutate(
+                          `/admin/waitlist/${seatEntry.id}/seat`,
+                          "POST",
+                          { tableId },
+                        );
+                      }, () => setSeatEntry(null));
                     });
                   }}
                 >

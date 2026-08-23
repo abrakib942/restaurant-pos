@@ -5,7 +5,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { ArrowLeft, Minus, Plus, Trash2, Zap } from "lucide-react";
-import { submitOrder } from "@/app/actions/orders";
+import { ApiClientError, apiMutate } from "@/lib/api-client";
 import {
   FloorOpsPanel,
   type FloorOpsTable,
@@ -150,21 +150,23 @@ export function PosScreen({
       return;
     }
     startTransition(async () => {
-      const result = await submitOrder({
-        tableId: table.id,
-        items: cart.map((line) => ({
-          menuItemId: line.menuItemId,
-          qty: line.qty,
-          rush: line.rush,
-        })),
-      });
-      if (!result.ok) {
-        toast.error(result.error);
-        return;
+      try {
+        const result = await apiMutate("/waiter/orders", "POST", {
+          tableId: table.id,
+          items: cart.map((line) => ({
+            menuItemId: line.menuItemId,
+            qty: line.qty,
+            rush: line.rush,
+          })),
+        });
+        toast.success(result.message ?? "Order submitted");
+        setCart([]);
+        router.refresh();
+      } catch (err) {
+        toast.error(
+          err instanceof ApiClientError ? err.message : "Request failed",
+        );
       }
-      toast.success(result.message ?? "Order submitted");
-      setCart([]);
-      router.refresh();
     });
   }
 

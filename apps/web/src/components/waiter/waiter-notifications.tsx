@@ -5,7 +5,7 @@ import Link from "next/link";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { AlertTriangle, Bell } from "lucide-react";
-import { markItemServed } from "@/app/actions/service";
+import { ApiClientError, apiFetch, apiMutate } from "@/lib/api-client";
 import type { WaiterNotificationsData } from "@/lib/waiter-notifications";
 import { isExpoStale } from "@/lib/expo-meta";
 import { formatElapsedMs } from "@/lib/kitchen-meta";
@@ -25,9 +25,10 @@ import {
 import { cn } from "@/lib/utils";
 
 async function fetchNotifications(): Promise<WaiterNotificationsData> {
-  const res = await fetch("/api/waiter/notifications", { cache: "no-store" });
-  if (!res.ok) throw new Error("Failed to load notifications");
-  return res.json();
+  const body = await apiFetch<WaiterNotificationsData>("/waiter/notifications");
+  return (
+    body.data ?? { ready: [], count: 0, mineCount: 0, staleCount: 0 }
+  );
 }
 
 function useNowTick(active: boolean) {
@@ -65,16 +66,18 @@ export function WaiterNotifications() {
 
   function serve(id: string) {
     startTransition(async () => {
-      const result = await markItemServed(id);
-      if (!result.ok) {
-        toast.error(result.error);
-        return;
+      try {
+        const result = await apiMutate(`/waiter/items/${id}/served`, "POST");
+        toast.success(result.message ?? "Served");
+        await queryClient.invalidateQueries({
+          queryKey: ["waiter-notifications"],
+        });
+        await queryClient.invalidateQueries({ queryKey: ["kitchen-board"] });
+      } catch (err) {
+        toast.error(
+          err instanceof ApiClientError ? err.message : "Request failed",
+        );
       }
-      toast.success(result.message ?? "Served");
-      await queryClient.invalidateQueries({
-        queryKey: ["waiter-notifications"],
-      });
-      await queryClient.invalidateQueries({ queryKey: ["kitchen-board"] });
     });
   }
 

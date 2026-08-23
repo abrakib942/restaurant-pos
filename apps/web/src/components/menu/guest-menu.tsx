@@ -10,10 +10,7 @@ import {
   Receipt,
   Trash2,
 } from "lucide-react";
-import {
-  createGuestServiceRequest,
-  submitGuestOrder,
-} from "@/app/actions/guest";
+import { ApiClientError, apiMutate } from "@/lib/api-client";
 import { RESTAURANT_NAME } from "@/lib/constants";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -137,34 +134,38 @@ export function GuestMenu({ table, categories, menuItems }: GuestMenuProps) {
       return;
     }
     startTransition(async () => {
-      const result = await submitGuestOrder({
-        qrSlug: table.qrSlug,
-        items: cart.map((line) => ({
-          menuItemId: line.menuItemId,
-          qty: line.qty,
-        })),
-      });
-      if (!result.ok) {
-        toast.error(result.error);
-        return;
+      try {
+        const result = await apiMutate("/guest/orders", "POST", {
+          qrSlug: table.qrSlug,
+          items: cart.map((line) => ({
+            menuItemId: line.menuItemId,
+            qty: line.qty,
+          })),
+        });
+        toast.success(result.message ?? "Order sent");
+        setCart([]);
+        setCartOpen(false);
+      } catch (err) {
+        toast.error(
+          err instanceof ApiClientError ? err.message : "Request failed",
+        );
       }
-      toast.success(result.message ?? "Order sent");
-      setCart([]);
-      setCartOpen(false);
     });
   }
 
   function sendService(type: "CALL_WAITER" | "REQUEST_BILL") {
     startTransition(async () => {
-      const result = await createGuestServiceRequest({
-        qrSlug: table.qrSlug,
-        type,
-      });
-      if (!result.ok) {
-        toast.error(result.error);
-        return;
+      try {
+        const result = await apiMutate("/guest/service-requests", "POST", {
+          qrSlug: table.qrSlug,
+          type,
+        });
+        toast.success(result.message ?? "Sent");
+      } catch (err) {
+        toast.error(
+          err instanceof ApiClientError ? err.message : "Request failed",
+        );
       }
-      toast.success(result.message ?? "Sent");
     });
   }
 

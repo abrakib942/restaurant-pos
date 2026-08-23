@@ -5,7 +5,7 @@ import Link from "next/link";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { HandHelping, Receipt } from "lucide-react";
-import { acknowledgeServiceRequest } from "@/app/actions/service-requests";
+import { ApiClientError, apiFetch, apiMutate } from "@/lib/api-client";
 import type { ServiceRequestsData } from "@/lib/service-requests";
 import { POLL_INTERVAL_MS } from "@/lib/constants";
 import { useSseConnected } from "@/components/providers/realtime-listener";
@@ -21,11 +21,8 @@ import {
 } from "@/components/ui/dialog";
 
 async function fetchServiceRequests(): Promise<ServiceRequestsData> {
-  const res = await fetch("/api/waiter/service-requests", {
-    cache: "no-store",
-  });
-  if (!res.ok) throw new Error("Failed to load service requests");
-  return res.json();
+  const body = await apiFetch<ServiceRequestsData>("/waiter/service-requests");
+  return body.data ?? { requests: [], count: 0 };
 }
 
 function requestLabel(type: ServiceRequestsData["requests"][number]["type"]) {
@@ -47,15 +44,20 @@ export function ServiceRequestsBell() {
 
   function ack(id: string) {
     startTransition(async () => {
-      const result = await acknowledgeServiceRequest(id);
-      if (!result.ok) {
-        toast.error(result.error);
-        return;
+      try {
+        const result = await apiMutate(
+          `/waiter/service-requests/${id}/acknowledge`,
+          "POST",
+        );
+        toast.success(result.message ?? "Cleared");
+        await queryClient.invalidateQueries({
+          queryKey: ["waiter-service-requests"],
+        });
+      } catch (err) {
+        toast.error(
+          err instanceof ApiClientError ? err.message : "Request failed",
+        );
       }
-      toast.success(result.message ?? "Cleared");
-      await queryClient.invalidateQueries({
-        queryKey: ["waiter-service-requests"],
-      });
     });
   }
 

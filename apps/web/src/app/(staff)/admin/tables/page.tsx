@@ -1,10 +1,15 @@
 import { TablesManager } from "@/components/admin/tables-manager";
-import { prisma } from "@/lib/prisma";
+import { serverApiData } from "@/lib/server-api";
+
+type TableRow = {
+  id: string;
+  label: string;
+  qrSlug: string;
+  status: "AVAILABLE" | "OCCUPIED" | "BILLING";
+};
 
 export default async function AdminTablesPage() {
-  const tables = await prisma.table.findMany({
-    orderBy: { label: "asc" },
-  });
+  const tables = (await serverApiData<TableRow[]>("/admin/tables")) ?? [];
 
   return (
     <div className="mx-auto max-w-4xl space-y-6">
@@ -14,14 +19,7 @@ export default async function AdminTablesPage() {
           Floor tables and their guest menu QR codes.
         </p>
       </div>
-      <TablesManager
-        tables={tables.map((table) => ({
-          id: table.id,
-          label: table.label,
-          qrSlug: table.qrSlug,
-          status: table.status,
-        }))}
-      />
+      <TablesManager tables={tables} />
     </div>
   );
 }

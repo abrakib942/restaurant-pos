@@ -1,12 +1,12 @@
 "use client";
 
 import { useState, useTransition } from "react";
+import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { Copy, Pencil, Plus, QrCode, Trash2 } from "lucide-react";
-import type { ActionResult } from "@/lib/action-result";
+import { ApiClientError, apiMutate } from "@/lib/api-client";
 import { tableMenuUrl } from "@/lib/constants";
 import { suggestQrSlug } from "@/lib/tables";
-import { createTable, deleteTable, updateTable } from "@/app/actions/tables";
 import { QrCodeImage } from "@/components/admin/qr-code-image";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -51,15 +51,6 @@ type TablesManagerProps = {
   tables: TableRow[];
 };
 
-async function handleResult(result: ActionResult, close?: () => void) {
-  if (result.ok) {
-    toast.success(result.message ?? "Saved");
-    close?.();
-  } else {
-    toast.error(result.error);
-  }
-}
-
 function statusVariant(status: TableRow["status"]) {
   switch (status) {
     case "OCCUPIED":
@@ -72,6 +63,7 @@ function statusVariant(status: TableRow["status"]) {
 }
 
 export function TablesManager({ tables }: TablesManagerProps) {
+  const router = useRouter();
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState<TableRow | null>(null);
   const [qrTable, setQrTable] = useState<TableRow | null>(null);
@@ -123,12 +115,29 @@ export function TablesManager({ tables }: TablesManagerProps) {
             </DialogHeader>
             <form
               className="space-y-4"
-              action={(formData) => {
+              action={() => {
                 startTransition(async () => {
-                  const result = editing
-                    ? await updateTable(formData)
-                    : await createTable(formData);
-                  await handleResult(result, () => setOpen(false));
+                  const payload = { label, qrSlug };
+                  try {
+                    if (editing) {
+                      await apiMutate(
+                        `/admin/tables/${editing.id}`,
+                        "PATCH",
+                        payload,
+                      );
+                    } else {
+                      await apiMutate("/admin/tables", "POST", payload);
+                    }
+                    toast.success("Saved");
+                    setOpen(false);
+                    router.refresh();
+                  } catch (err) {
+                    toast.error(
+                      err instanceof ApiClientError
+                        ? err.message
+                        : "Request failed",
+                    );
+                  }
                 });
               }}
             >
@@ -246,12 +255,21 @@ export function TablesManager({ tables }: TablesManagerProps) {
                             <AlertDialogCancel>Cancel</AlertDialogCancel>
                             <AlertDialogAction
                               onClick={() => {
-                                const formData = new FormData();
-                                formData.set("id", table.id);
                                 startTransition(async () => {
-                                  await handleResult(
-                                    await deleteTable(formData),
-                                  );
+                                  try {
+                                    await apiMutate(
+                                      `/admin/tables/${table.id}`,
+                                      "DELETE",
+                                    );
+                                    toast.success("Table deleted");
+                                    router.refresh();
+                                  } catch (err) {
+                                    toast.error(
+                                      err instanceof ApiClientError
+                                        ? err.message
+                                        : "Request failed",
+                                    );
+                                  }
                                 });
                               }}
                             >

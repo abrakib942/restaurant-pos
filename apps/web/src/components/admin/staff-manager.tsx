@@ -1,10 +1,10 @@
 "use client";
 
 import { useState, useTransition } from "react";
+import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { Pencil, Plus, Trash2 } from "lucide-react";
-import type { ActionResult } from "@/lib/action-result";
-import { createStaff, deleteStaff, updateStaff } from "@/app/actions/staff";
+import { ApiClientError, apiMutate } from "@/lib/api-client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -55,16 +55,8 @@ type StaffManagerProps = {
   staff: StaffRow[];
 };
 
-async function handleResult(result: ActionResult, close?: () => void) {
-  if (result.ok) {
-    toast.success(result.message ?? "Saved");
-    close?.();
-  } else {
-    toast.error(result.error);
-  }
-}
-
 export function StaffManager({ staff }: StaffManagerProps) {
+  const router = useRouter();
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState<StaffRow | null>(null);
   const [role, setRole] = useState<"WAITER" | "KITCHEN">("WAITER");
@@ -112,12 +104,35 @@ export function StaffManager({ staff }: StaffManagerProps) {
               key={editing?.id ?? "new"}
               className="space-y-4"
               action={(formData) => {
-                formData.set("role", role);
+                const payload = {
+                  name: String(formData.get("name") ?? ""),
+                  username: String(formData.get("username") ?? ""),
+                  role,
+                  ...(String(formData.get("pin") ?? "")
+                    ? { pin: String(formData.get("pin")) }
+                    : {}),
+                };
                 startTransition(async () => {
-                  const result = editing
-                    ? await updateStaff(formData)
-                    : await createStaff(formData);
-                  await handleResult(result, () => setOpen(false));
+                  try {
+                    if (editing) {
+                      await apiMutate(
+                        `/admin/staff/${editing.id}`,
+                        "PATCH",
+                        payload,
+                      );
+                    } else {
+                      await apiMutate("/admin/staff", "POST", payload);
+                    }
+                    toast.success("Saved");
+                    setOpen(false);
+                    router.refresh();
+                  } catch (err) {
+                    toast.error(
+                      err instanceof ApiClientError
+                        ? err.message
+                        : "Request failed",
+                    );
+                  }
                 });
               }}
             >
@@ -254,12 +269,21 @@ export function StaffManager({ staff }: StaffManagerProps) {
                             <AlertDialogCancel>Cancel</AlertDialogCancel>
                             <AlertDialogAction
                               onClick={() => {
-                                const formData = new FormData();
-                                formData.set("id", member.id);
                                 startTransition(async () => {
-                                  await handleResult(
-                                    await deleteStaff(formData),
-                                  );
+                                  try {
+                                    await apiMutate(
+                                      `/admin/staff/${member.id}`,
+                                      "DELETE",
+                                    );
+                                    toast.success("Staff deleted");
+                                    router.refresh();
+                                  } catch (err) {
+                                    toast.error(
+                                      err instanceof ApiClientError
+                                        ? err.message
+                                        : "Request failed",
+                                    );
+                                  }
                                 });
                               }}
                             >

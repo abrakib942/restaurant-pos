@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { Ban, BarChart3, Clock, Users } from "lucide-react";
 import type { AdminReportsData, VoidableItemRow } from "@/lib/reports";
-import { voidOrderItem } from "@/app/actions/reports";
+import { ApiClientError, apiMutate } from "@/lib/api-client";
 import { formatMoney } from "@/lib/money";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -67,18 +67,20 @@ export function AdminReports({ data, voidable }: AdminReportsProps) {
   function confirmVoid() {
     if (!voidTarget) return;
     startTransition(async () => {
-      const result = await voidOrderItem({
-        orderItemId: voidTarget.id,
-        reason: voidReason || undefined,
-      });
-      if (!result.ok) {
-        toast.error(result.error);
-        return;
+      try {
+        const result = await apiMutate("/admin/reports/void", "POST", {
+          orderItemId: voidTarget.id,
+          reason: voidReason || undefined,
+        });
+        toast.success(result.message ?? "Voided");
+        setVoidTarget(null);
+        setVoidReason("");
+        router.refresh();
+      } catch (err) {
+        toast.error(
+          err instanceof ApiClientError ? err.message : "Request failed",
+        );
       }
-      toast.success(result.message ?? "Voided");
-      setVoidTarget(null);
-      setVoidReason("");
-      router.refresh();
     });
   }
 

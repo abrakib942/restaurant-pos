@@ -1,5 +1,5 @@
 import { getAppUrl } from "@/lib/constants";
-import type { ApiBody } from "@/lib/api/envelope";
+import type { ApiOk } from "@/lib/api/envelope";
 
 function apiBase() {
   const env =
@@ -21,7 +21,7 @@ export class ApiClientError extends Error {
 export async function apiFetch<T = undefined>(
   path: string,
   init?: RequestInit,
-): Promise<ApiBody<T>> {
+): Promise<ApiOk<T>> {
   const url = `${apiBase()}${path.startsWith("/") ? path : `/${path}`}`;
   const res = await fetch(url, {
     ...init,
@@ -33,9 +33,9 @@ export async function apiFetch<T = undefined>(
     cache: "no-store",
   });
 
-  let body: ApiBody<T>;
+  let body: ApiOk<T> | { ok?: boolean; error?: string; message?: string; data?: T };
   try {
-    body = (await res.json()) as ApiBody<T>;
+    body = (await res.json()) as ApiOk<T> | { ok?: boolean; error?: string; message?: string; data?: T };
   } catch {
     throw new ApiClientError("Invalid response from API", res.status);
   }
@@ -44,7 +44,11 @@ export async function apiFetch<T = undefined>(
     if (!body.ok) {
       throw new ApiClientError(body.error || "Request failed", res.status);
     }
-    return body;
+    return {
+      ok: true,
+      message: body.message,
+      data: body.data,
+    };
   }
 
   if (!res.ok) {
@@ -67,7 +71,7 @@ export async function apiMutate<T = undefined>(
   path: string,
   method: "POST" | "PUT" | "PATCH" | "DELETE",
   body?: unknown,
-): Promise<ApiBody<T>> {
+): Promise<ApiOk<T>> {
   return apiFetch<T>(path, {
     method,
     body: body === undefined ? undefined : JSON.stringify(body),

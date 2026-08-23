@@ -4,11 +4,7 @@ import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { ArrowLeftRight, Merge, UserRound } from "lucide-react";
-import {
-  mergeTableOrders,
-  reassignOrderWaiter,
-  transferTableOrder,
-} from "@/app/actions/floor-ops";
+import { ApiClientError, apiMutate } from "@/lib/api-client";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import {
@@ -70,18 +66,18 @@ export function FloorOpsPanel({
     (t) => t.id !== tableId && t.hasOpenOrder && t.status === "OCCUPIED",
   );
 
-  function run(
-    action: () => Promise<{ ok: boolean; error?: string; message?: string }>,
-  ) {
+  function run(action: () => ReturnType<typeof apiMutate>) {
     startTransition(async () => {
-      const result = await action();
-      if (!result.ok) {
-        toast.error(result.error);
-        return;
+      try {
+        const result = await action();
+        toast.success(result.message ?? "Done");
+        setOpen(false);
+        router.refresh();
+      } catch (err) {
+        toast.error(
+          err instanceof ApiClientError ? err.message : "Request failed",
+        );
       }
-      toast.success(result.message ?? "Done");
-      setOpen(false);
-      router.refresh();
     });
   }
 
@@ -129,7 +125,7 @@ export function FloorOpsPanel({
                   disabled={pending || !transferTo}
                   onClick={() =>
                     run(() =>
-                      transferTableOrder({
+                      apiMutate("/waiter/floor/transfer", "POST", {
                         fromTableId: tableId,
                         toTableId: transferTo,
                       }),
@@ -164,7 +160,12 @@ export function FloorOpsPanel({
                   className="w-full"
                   disabled={pending || !waiterId}
                   onClick={() =>
-                    run(() => reassignOrderWaiter({ tableId, waiterId }))
+                    run(() =>
+                      apiMutate("/waiter/floor/reassign", "POST", {
+                        tableId,
+                        waiterId,
+                      }),
+                    )
                   }
                 >
                   Reassign
@@ -199,7 +200,7 @@ export function FloorOpsPanel({
                 disabled={pending || !mergeFrom}
                 onClick={() =>
                   run(() =>
-                    mergeTableOrders({
+                    apiMutate("/waiter/floor/merge", "POST", {
                       sourceTableId: mergeFrom,
                       targetTableId: tableId,
                     }),

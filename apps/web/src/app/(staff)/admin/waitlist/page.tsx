@@ -1,15 +1,25 @@
 import { WaitlistManager } from "@/components/admin/waitlist-manager";
 import { AdminWaitlistRealtime } from "@/components/admin/admin-waitlist-realtime";
-import {
-  getAvailableTablesForSeating,
-  getWaitlistForAdmin,
-} from "@/lib/waitlist";
+import type { WaitlistParty } from "@/lib/waitlist";
+import { serverApiData } from "@/lib/server-api";
+
+type WaitlistData = {
+  active: WaitlistParty[];
+  history: WaitlistParty[];
+};
+
+type AvailableTable = {
+  id: string;
+  label: string;
+};
 
 export default async function AdminWaitlistPage() {
-  const [{ active, history }, availableTables] = await Promise.all([
-    getWaitlistForAdmin(),
-    getAvailableTablesForSeating(),
+  const [waitlist, availableTables] = await Promise.all([
+    serverApiData<WaitlistData>("/admin/waitlist"),
+    serverApiData<AvailableTable[]>("/admin/waitlist/available-tables"),
   ]);
+
+  const { active = [], history = [] } = waitlist ?? {};
 
   return (
     <AdminWaitlistRealtime>
@@ -24,7 +34,7 @@ export default async function AdminWaitlistPage() {
         <WaitlistManager
           active={active}
           history={history}
-          availableTables={availableTables}
+          availableTables={availableTables ?? []}
         />
       </div>
     </AdminWaitlistRealtime>
