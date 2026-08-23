@@ -2,16 +2,40 @@
 
 Use this before pointing real staff at a hosted instance.
 
+## Monorepo layout
+
+| App / package | Port | Deploy |
+|---------------|------|--------|
+| `@repo/web` | 3000 | Next.js staff + guest UI |
+| `@repo/api` | 5002 | NestJS REST (JWT scaffold) |
+| `@repo/db` | — | Prisma migrations only |
+
+Build order: `@repo/db` generate → `@repo/api` build → `@repo/web` build.
+
+Production runs **two processes** (web + api). No storage or separate admin app.
+
 ## Environment
 
-- [ ] Copy `.env.example` → production env (Vercel/Railway/Fly secrets, not committed).
+### Web (`apps/web/.env`)
+
 - [ ] `DATABASE_URL` — managed Postgres with TLS in production.
 - [ ] `SESSION_SECRET` — cryptographically random, **≥ 32 characters**; rotate invalidates all sessions.
-- [ ] `NEXT_PUBLIC_APP_URL` — exact public origin (`https://your-domain.com`), no trailing slash. QR codes and receipts use this.
+- [ ] `NEXT_PUBLIC_APP_URL` — exact public origin (`https://your-domain.com`), no trailing slash.
+- [ ] `NEXT_PUBLIC_API_BASE_URL` — public API origin (e.g. `https://api.your-domain.com`).
+
+### API (`apps/api/.env`)
+
+- [ ] `POSTGRES_DATABASE_URL` — same database as web `DATABASE_URL`.
+- [ ] `JWT_SECRET` — **≥ 32 characters**; used when web switches to JWT login.
+- [ ] `CORS_ORIGINS` — comma-separated web origins.
+
+### Database package (`packages/db/.env`)
+
+- [ ] `DATABASE_URL` — for local `pnpm db:migrate` / `db:seed`.
 
 ## Database
 
-- [ ] Run migrations: `pnpm prisma migrate deploy` (never `migrate dev` on prod).
+- [ ] Run migrations: `pnpm db:migrate:prod` (never `migrate dev` on prod).
 - [ ] Seed **only** for demos/staging: `pnpm db:seed`. Production should create real staff PINs via admin UI.
 - [ ] Confirm Postgres backups / point-in-time recovery are enabled with your host.
 
@@ -19,20 +43,27 @@ Use this before pointing real staff at a hosted instance.
 
 ```bash
 pnpm install --frozen-lockfile
-pnpm prisma generate
-pnpm prisma migrate deploy
+pnpm db:generate
+pnpm db:migrate:prod
 pnpm build
-pnpm start   # or platform start command
+pnpm start                    # turbo: api + web via PM2 use scripts/deploy/start.sh
 ```
 
-- [ ] Health: `/login` loads, staff can sign in, guest menu `/menu/t-01` loads without auth.
+Or individually:
+
+```bash
+pnpm --filter @repo/api start
+pnpm --filter @repo/web start
+```
+
+- [ ] Health: web `/login` loads; API `GET /health/ping` returns pong; staff can sign in; guest menu `/menu/t-01` loads without auth.
 
 ## Security
 
 - [ ] HTTPS only; platform should redirect HTTP → HTTPS.
 - [ ] Login lockout is on by default (5 failures / 15 min → 15 min lockout per username; IP cap 30 failures / 15 min).
 - [ ] Change demo PINs before any real service (`admin`, `maya`, etc.).
-- [ ] `.env`, `.cursor/`, and `public/uploads/` stay out of git.
+- [ ] `.env`, `.cursor/`, and `apps/web/public/uploads/` stay out of git.
 - [ ] Menu uploads are stored on local disk — on serverless hosts, use object storage instead (not in MVP).
 
 ## Observability
@@ -43,7 +74,7 @@ pnpm start   # or platform start command
 
 ## E2E smoke (staging)
 
-With DB seeded and app running on `http://localhost:3000`:
+With DB seeded and web running on `http://localhost:3000`:
 
 ```bash
 pnpm exec playwright install chromium
@@ -62,6 +93,7 @@ Covers: waitlist seat → waiter order → kitchen fire → expo serve → check
 
 ## Known MVP limits
 
-- In-memory SSE pub/sub — single instance only; multi-node needs Redis (Phase 18+).
+- In-memory SSE pub/sub — single instance only; multi-node needs Redis.
+- Web still uses cookie sessions; API JWT login is scaffolded for a follow-up migration.
 - No card processing — payment method is recorded, not charged.
 - Local menu image uploads — not durable on ephemeral disks.

@@ -1,0 +1,41 @@
+{
+  "name": "@repo/db",
+  "version": "0.0.0",
+  "private": true,
+  "main": "./dist/src/index.js",
+  "types": "./dist/src/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/src/index.d.ts",
+      "default": "./dist/src/index.js"
+    },
+    "./client": {
+      "types": "./dist/generated/client.d.ts",
+      "default": "./dist/generated/client.js"
+    }
+  },
+  "scripts": {
+    "db:migrate:dev": "prisma migrate dev --config ./prisma.config.ts",
+    "db:migrate:prod": "prisma migrate deploy --config ./prisma.config.ts && prisma generate --config ./prisma.config.ts",
+    "db:generate": "prisma generate --config ./prisma.config.ts",
+    "db:seed": "tsx prisma/seed.ts",
+    "db:reset": "prisma migrate reset --config ./prisma.config.ts",
+    "db:studio": "prisma studio --config ./prisma.config.ts",
+    "build": "pnpm db:generate && tsc -p tsconfig.build.json",
+    "clean": "rm -rf generated dist"
+  },
+  "dependencies": {
+    "@prisma/adapter-pg": "^7.9.1",
+    "@prisma/client": "^7.9.1",
+    "bcryptjs": "^3.0.3",
+    "dotenv": "^17.4.2",
+    "pg": "^8.23.0"
+  },
+  "devDependencies": {
+    "@repo/typescript-config": "workspace:*",
+    "@types/pg": "^8.23.1",
+    "prisma": "^7.9.1",
+    "tsx": "^4.23.12",
+    "typescript": "^5.9.3"
+  }
+}
