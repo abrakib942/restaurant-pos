@@ -13,7 +13,11 @@ export default async function WaiterLayout({
     <QueryProvider>
       <RealtimeListener
         url="/api/sse/waiter"
-        queryKeys={[["waiter-notifications"], ["waiter-service-requests"]]}
+        queryKeys={[
+          ["waiter-notifications"],
+          ["waiter-service-requests"],
+          ["waiter-kitchen-queue"],
+        ]}
         refresh
       >
         <WaiterShell user={session}>{children}</WaiterShell>

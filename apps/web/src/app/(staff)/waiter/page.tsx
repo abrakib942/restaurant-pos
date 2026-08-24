@@ -1,5 +1,6 @@
 import { TableGrid } from "@/components/waiter/table-grid";
 import { PassStrip } from "@/components/waiter/pass-strip";
+import { KitchenQueueStrip } from "@/components/waiter/kitchen-queue-strip";
 import { WaitlistStrip } from "@/components/waiter/waitlist-strip";
 import { requireRole } from "@/lib/auth";
 import type { WaitlistParty } from "@/lib/types/waitlist";
@@ -11,6 +12,9 @@ type FloorData = {
     label: string;
     status: "AVAILABLE" | "OCCUPIED" | "BILLING";
     openOrderItemCount: number;
+    kitchenPendingCount?: number;
+    kitchenQueuePosition?: number | null;
+    kitchenEstimatedLabel?: string | null;
   }[];
   waitlist: WaitlistParty[];
 };
@@ -18,11 +22,10 @@ type FloorData = {
 export default async function WaiterHomePage() {
   await requireRole("WAITER");
 
-  const floor =
-    (await serverApiData<FloorData>("/waiter/floor")) ?? {
-      tables: [],
-      waitlist: [],
-    };
+  const floor = (await serverApiData<FloorData>("/waiter/floor")) ?? {
+    tables: [],
+    waitlist: [],
+  };
 
   const sorted = [...floor.tables].sort((a, b) =>
     a.label.localeCompare(b.label, undefined, { numeric: true }),
@@ -37,6 +40,7 @@ export default async function WaiterHomePage() {
         </p>
       </div>
       <WaitlistStrip parties={floor.waitlist} />
+      <KitchenQueueStrip />
       <PassStrip />
       <TableGrid
         tables={sorted.map((table) => ({
@@ -44,6 +48,9 @@ export default async function WaiterHomePage() {
           label: table.label,
           status: table.status,
           openOrderItemCount: table.openOrderItemCount,
+          kitchenPendingCount: table.kitchenPendingCount,
+          kitchenQueuePosition: table.kitchenQueuePosition,
+          kitchenEstimatedLabel: table.kitchenEstimatedLabel,
         }))}
       />
     </div>

@@ -34,10 +34,22 @@ export type PosCategory = {
 
 export type ExistingOrderLine = {
   id: string;
+  fireId: string;
+  menuItemId: string;
   name: string;
   qty: number;
   unitPrice: string;
   status: string;
+  removable?: boolean;
+  queuePosition?: number | null;
+  estimatedLabel?: string | null;
+};
+
+export type LiveFireInfo = {
+  fireId: string;
+  mode: "pending" | "inProgress";
+  queuePosition: number | null;
+  estimatedLabel: string | null;
 };
 
 type CartLine = {
@@ -46,6 +58,14 @@ type CartLine = {
   unitPrice: string;
   qty: number;
   rush: boolean;
+  note?: string;
+};
+
+export type GuestPrefillLine = {
+  menuItemId: string;
+  name: string;
+  qty: number;
+  note: string | null;
 };
 
 type PosScreenProps = {
@@ -57,12 +77,15 @@ type PosScreenProps = {
   categories: PosCategory[];
   menuItems: PosMenuItem[];
   existingLines: ExistingOrderLine[];
+  liveFire?: LiveFireInfo | null;
   floorOps?: {
     hasActiveOrder: boolean;
     currentWaiterId: string | null;
     tables: FloorOpsTable[];
     waiters: FloorOpsWaiter[];
   };
+  serviceRequestId?: string;
+  guestLines?: GuestPrefillLine[];
 };
 
 function formatPrice(price: string) {
@@ -70,31 +93,103 @@ function formatPrice(price: string) {
   return Number.isFinite(n) ? `$${n.toFixed(2)}` : price;
 }
 
+function cartFromGuestLines(
+  guestLines: GuestPrefillLine[] | undefined,
+  menuItems: PosMenuItem[],
+): CartLine[] {
+  if (!guestLines?.length) return [];
+  const byId = new Map(menuItems.map((item) => [item.id, item]));
+  const merged = new Map<string, CartLine>();
+  for (const line of guestLines) {
+    const menuItem = byId.get(line.menuItemId);
+    const existing = merged.get(line.menuItemId);
+    const qty = existing ? existing.qty + line.qty : line.qty;
+    merged.set(line.menuItemId, {
+      menuItemId: line.menuItemId,
+      name: menuItem?.name ?? line.name,
+      unitPrice: menuItem?.price ?? "0.00",
+      qty: Math.min(99, qty),
+      rush: existing?.rush ?? false,
+      note: line.note ?? existing?.note,
+    });
+  }
+  return [...merged.values()];
+}
+
 export function PosScreen({
   table,
   categories,
   menuItems,
   existingLines,
+  liveFire = null,
   floorOps,
+  serviceRequestId,
+  guestLines,
 }: PosScreenProps) {
   const router = useRouter();
   const [categoryId, setCategoryId] = useState<string>(
     categories[0]?.id ?? "all",
   );
-  const [cart, setCart] = useState<CartLine[]>([]);
+  const [cart, setCart] = useState<CartLine[]>(() =>
+    cartFromGuestLines(guestLines, menuItems),
+  );
+  const [pendingQty, setPendingQty] = useState<Record<string, number>>(() => {
+    const init: Record<string, number> = {};
+    for (const line of existingLines) {
+      if (line.removable) init[line.id] = line.qty;
+    }
+    return init;
+  });
+  const [removedIds, setRemovedIds] = useState<Set<string>>(() => new Set());
   const [pending, startTransition] = useTransition();
 
   const billingLocked = table.status === "BILLING";
+  const canEditPending = liveFire?.mode === "pending";
+  const cookingAddOnly = liveFire?.mode === "inProgress";
 
   const visibleItems = useMemo(() => {
     if (categoryId === "all") return menuItems;
     return menuItems.filter((item) => item.categoryId === categoryId);
   }, [menuItems, categoryId]);
 
+  const livePendingLines = useMemo(
+    () =>
+      existingLines.filter(
+        (line) =>
+          liveFire &&
+          line.fireId === liveFire.fireId &&
+          line.status === "PENDING" &&
+          !removedIds.has(line.id),
+      ),
+    [existingLines, liveFire, removedIds],
+  );
+
+  const lockedLines = useMemo(
+    () =>
+      existingLines.filter(
+        (line) =>
+          !(
+            liveFire &&
+            line.fireId === liveFire.fireId &&
+            line.status === "PENDING"
+          ),
+      ),
+    [existingLines, liveFire],
+  );
+
   const cartTotal = cart.reduce(
     (sum, line) => sum + Number(line.unitPrice) * line.qty,
     0,
   );
+
+  const pendingEdits =
+    canEditPending &&
+    (removedIds.size > 0 ||
+      livePendingLines.some(
+        (line) => (pendingQty[line.id] ?? line.qty) !== line.qty,
+      ));
+
+  const canSubmit = !billingLocked && (cart.length > 0 || pendingEdits);
 
   function addToCart(item: PosMenuItem) {
     if (!item.isAvailable || billingLocked) return;
@@ -145,22 +240,42 @@ export function PosScreen({
   }
 
   function onSubmit() {
-    if (cart.length === 0) {
-      toast.error("Add at least one item");
+    if (!canSubmit) {
+      toast.error("Add or change at least one item");
       return;
     }
     startTransition(async () => {
       try {
+        const removeItemIds = canEditPending ? [...removedIds] : [];
+        const updateItems = canEditPending
+          ? livePendingLines
+              .filter((line) => {
+                const qty = pendingQty[line.id] ?? line.qty;
+                return qty !== line.qty && qty > 0;
+              })
+              .map((line) => ({
+                orderItemId: line.id,
+                qty: pendingQty[line.id] ?? line.qty,
+              }))
+          : [];
+
         const result = await apiMutate("/waiter/orders", "POST", {
           tableId: table.id,
+          serviceRequestId,
           items: cart.map((line) => ({
             menuItemId: line.menuItemId,
             qty: line.qty,
             rush: line.rush,
           })),
+          removeItemIds,
+          updateItems,
         });
         toast.success(result.message ?? "Order submitted");
         setCart([]);
+        setRemovedIds(new Set());
+        if (serviceRequestId) {
+          router.replace(`/waiter/tables/${table.id}`);
+        }
         router.refresh();
       } catch (err) {
         toast.error(
@@ -169,6 +284,14 @@ export function PosScreen({
       }
     });
   }
+
+  const submitLabel = pending
+    ? "Sending…"
+    : cookingAddOnly
+      ? "Add to cooking fire"
+      : canEditPending && (cart.length > 0 || pendingEdits)
+        ? "Update kitchen"
+        : "Send to kitchen";
 
   return (
     <div className="mx-auto flex max-w-6xl flex-col gap-4 md:flex-row md:items-start">
@@ -186,6 +309,15 @@ export function PosScreen({
           <Badge variant="secondary" className="rounded-md capitalize">
             {table.status.toLowerCase()}
           </Badge>
+          {liveFire ? (
+            <Badge variant="outline" className="rounded-md">
+              {liveFire.mode === "pending" ? "Pending fire" : "Cooking fire"}
+              {liveFire.queuePosition != null
+                ? ` · #${liveFire.queuePosition}`
+                : ""}
+              {liveFire.estimatedLabel ? ` · ${liveFire.estimatedLabel}` : ""}
+            </Badge>
+          ) : null}
           {floorOps ? (
             <FloorOpsPanel
               tableId={table.id}
@@ -210,17 +342,102 @@ export function PosScreen({
           </p>
         ) : null}
 
-        {existingLines.length > 0 ? (
+        {cookingAddOnly ? (
+          <p className="rounded-md border border-primary/30 bg-primary/5 px-3 py-2 text-sm text-muted-foreground">
+            Kitchen is cooking this fire — you can add items only. Existing
+            lines stay until ready.
+          </p>
+        ) : null}
+
+        {canEditPending && livePendingLines.length > 0 ? (
           <div className="rounded-lg border border-border p-3">
-            <p className="text-sm font-medium">Current tickets</p>
+            <p className="text-sm font-medium">Pending fire (editable)</p>
+            <p className="mt-0.5 text-xs text-muted-foreground">
+              Change qty or remove before kitchen starts — same queue #
+            </p>
+            <ul className="mt-2 space-y-2">
+              {livePendingLines.map((line) => (
+                <li
+                  key={line.id}
+                  className="flex flex-wrap items-center justify-between gap-2 text-sm"
+                >
+                  <span className="min-w-0 font-medium">{line.name}</span>
+                  <div className="flex items-center gap-1.5">
+                    <Button
+                      type="button"
+                      size="icon-xs"
+                      variant="outline"
+                      disabled={pending}
+                      onClick={() =>
+                        setPendingQty((prev) => {
+                          const next = (prev[line.id] ?? line.qty) - 1;
+                          if (next <= 0) {
+                            setRemovedIds((ids) => new Set(ids).add(line.id));
+                            return prev;
+                          }
+                          return { ...prev, [line.id]: next };
+                        })
+                      }
+                    >
+                      <Minus className="size-3.5" />
+                    </Button>
+                    <span className="w-6 text-center tabular-nums">
+                      {pendingQty[line.id] ?? line.qty}
+                    </span>
+                    <Button
+                      type="button"
+                      size="icon-xs"
+                      variant="outline"
+                      disabled={
+                        pending || (pendingQty[line.id] ?? line.qty) >= 99
+                      }
+                      onClick={() =>
+                        setPendingQty((prev) => ({
+                          ...prev,
+                          [line.id]: Math.min(
+                            99,
+                            (prev[line.id] ?? line.qty) + 1,
+                          ),
+                        }))
+                      }
+                    >
+                      <Plus className="size-3.5" />
+                    </Button>
+                    <Button
+                      type="button"
+                      size="icon-xs"
+                      variant="ghost"
+                      disabled={pending}
+                      onClick={() =>
+                        setRemovedIds((ids) => new Set(ids).add(line.id))
+                      }
+                    >
+                      <Trash2 className="size-3.5" />
+                    </Button>
+                  </div>
+                </li>
+              ))}
+            </ul>
+          </div>
+        ) : null}
+
+        {lockedLines.length > 0 ? (
+          <div className="rounded-lg border border-border p-3">
+            <p className="text-sm font-medium">
+              {canEditPending ? "Other tickets" : "Current tickets"}
+            </p>
             <ul className="mt-2 space-y-1.5 text-sm text-muted-foreground">
-              {existingLines.map((line) => (
+              {lockedLines.map((line) => (
                 <li
                   key={line.id}
                   className="flex items-center justify-between gap-2"
                 >
                   <span>
                     {line.qty}× {line.name}
+                    {line.queuePosition != null
+                      ? ` · #${line.queuePosition}`
+                      : ""}
+                    {line.estimatedLabel ? ` · ${line.estimatedLabel}` : ""}
                   </span>
                   <span className="capitalize">
                     {line.status.toLowerCase().replaceAll("_", " ")}
@@ -308,14 +525,19 @@ export function PosScreen({
       <aside className="w-full shrink-0 rounded-lg border border-border bg-card/40 p-4 lg:sticky lg:top-20 lg:w-80">
         <p className="font-heading text-xl">Ticket</p>
         <p className="text-xs text-muted-foreground">
-          New items send to the kitchen as Pending. Toggle Rush per line if
-          needed.
+          {guestLines && guestLines.length > 0
+            ? "Guest selections are prefilled — edit, then send."
+            : cookingAddOnly
+              ? "New lines join the cooking fire."
+              : canEditPending
+                ? "New lines update the pending fire (same #)."
+                : "New items send to the kitchen as a fire."}
         </p>
         <Separator className="my-3" />
 
         {cart.length === 0 ? (
           <p className="py-8 text-center text-sm text-muted-foreground">
-            Tap menu items to build this round.
+            Tap menu items to add.
           </p>
         ) : (
           <ul className="space-y-3">
@@ -324,6 +546,11 @@ export function PosScreen({
                 <div className="flex items-start justify-between gap-2">
                   <div className="min-w-0">
                     <p className="text-sm font-medium">{line.name}</p>
+                    {line.note ? (
+                      <p className="text-xs text-muted-foreground">
+                        {line.note}
+                      </p>
+                    ) : null}
                     <p className="text-xs text-muted-foreground">
                       {formatPrice(line.unitPrice)} each
                     </p>
@@ -382,17 +609,17 @@ export function PosScreen({
 
         <Separator className="my-3" />
         <div className="flex items-center justify-between text-sm">
-          <span className="text-muted-foreground">This round</span>
+          <span className="text-muted-foreground">New lines</span>
           <span className="font-medium tabular-nums">
             {formatPrice(cartTotal.toFixed(2))}
           </span>
         </div>
         <Button
           className="mt-4 h-11 w-full"
-          disabled={pending || cart.length === 0 || billingLocked}
+          disabled={pending || !canSubmit}
           onClick={onSubmit}
         >
-          {pending ? "Sending…" : "Send to kitchen"}
+          {submitLabel}
         </Button>
       </aside>
     </div>

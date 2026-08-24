@@ -7,6 +7,9 @@ export type FloorTable = {
   label: string;
   status: "AVAILABLE" | "OCCUPIED" | "BILLING";
   openOrderItemCount: number;
+  kitchenPendingCount?: number;
+  kitchenQueuePosition?: number | null;
+  kitchenEstimatedLabel?: string | null;
 };
 
 type TableGridProps = {
@@ -62,6 +65,15 @@ export function TableGrid({ tables }: TableGridProps) {
                 ? "Checkout in progress"
                 : `${table.openOrderItemCount} ticket${table.openOrderItemCount === 1 ? "" : "s"}`}
           </p>
+          {(table.kitchenPendingCount ?? 0) > 0 &&
+          table.kitchenQueuePosition != null ? (
+            <p className="mt-1 text-[11px] tabular-nums text-primary">
+              Kitchen #{table.kitchenQueuePosition}
+              {table.kitchenEstimatedLabel
+                ? ` · ${table.kitchenEstimatedLabel}`
+                : ""}
+            </p>
+          ) : null}
         </Link>
       ))}
     </div>
