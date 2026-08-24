@@ -2,7 +2,9 @@
 
 Restaurant management MVP: admin, waiter POS, kitchen board, and a public QR menu.
 
-**Monorepo:** Turbo + pnpm with `apps/web` (Next.js), `apps/api` (NestJS scaffold), and `packages/db` (Prisma).
+Guests browse and call the waiter (optionally with a cart). **Only waiters** send orders to the kitchen. Guests can watch queue position and ETA on **My order**.
+
+**Monorepo:** Turbo + pnpm with `apps/web` (Next.js), `apps/api` (NestJS), and `packages/db` (Prisma).
 
 ## Quick start
 
@@ -36,20 +38,20 @@ Open `/login` (or **Staff entrance** on `/`). Username + 4-digit PIN.
 | Waiter  | julian   | `/waiter`  | 3333 |
 | Kitchen | kenji    | `/kitchen` | 4444 |
 
-Set `SESSION_SECRET` (32+ characters) and `NEXT_PUBLIC_APP_URL` in `apps/web/.env`.
+Set `JWT_SECRET` (32+ characters) on the API and `NEXT_PUBLIC_APP_URL` / `NEXT_PUBLIC_API_BASE_URL` in `apps/web/.env`.
 
-QR menu (no login): `/menu/t-01` … `/menu/t-10`.
+QR menu (no login): `/menu/t-01` … `/menu/t-10`. Guests call the waiter; they cannot fire the kitchen directly.
 
 ## Scripts
 
-| Command | Description |
-|---------|-------------|
-| `pnpm dev` | Start web + api (turbo) |
-| `pnpm dev:web` | Next.js only |
-| `pnpm dev:api` | NestJS only |
-| `pnpm build` | Build all packages |
-| `pnpm test:e2e` | Playwright (web) |
-| `pnpm db:*` | Prisma via `@repo/db` |
+| Command         | Description             |
+| --------------- | ----------------------- |
+| `pnpm dev`      | Start web + api (turbo) |
+| `pnpm dev:web`  | Next.js only            |
+| `pnpm dev:api`  | NestJS only             |
+| `pnpm build`    | Build all packages      |
+| `pnpm test:e2e` | Playwright (web)        |
+| `pnpm db:*`     | Prisma via `@repo/db`   |
 
 ## Production & tests
 
