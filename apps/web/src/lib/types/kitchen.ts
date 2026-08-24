@@ -12,18 +12,32 @@ export type KitchenTicket = {
   course: number;
   stationId: string | null;
   stationName: string | null;
-  tableLabel: string;
-  waiterName: string;
   createdAt: string;
   startedAt: string | null;
   readyAt: string | null;
 };
 
+export type KitchenFireCard = {
+  fireId: string;
+  tableLabel: string;
+  waiterName: string;
+  priority: "NORMAL" | "RUSH";
+  courseMin: number;
+  createdAt: string;
+  startedAt: string | null;
+  readyAt: string | null;
+  queuePosition: number | null;
+  estimatedMinutes: number | null;
+  estimatedLabel: string | null;
+  itemCount: number;
+  items: KitchenTicket[];
+};
+
 export type KitchenBoardData = {
   stations: KitchenStationInfo[];
-  pending: KitchenTicket[];
-  inProgress: KitchenTicket[];
-  ready: KitchenTicket[];
+  pending: KitchenFireCard[];
+  inProgress: KitchenFireCard[];
+  ready: KitchenFireCard[];
   inProgressCount: number;
   cap: number;
 };
