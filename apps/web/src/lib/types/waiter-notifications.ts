@@ -1,11 +1,19 @@
-export type ReadyNotification = {
+export type ReadyFireLine = {
   id: string;
   name: string;
   qty: number;
+};
+
+export type ReadyNotification = {
+  fireId: string;
   tableLabel: string;
   tableId: string;
-  readyAt: string | null;
   orderId: string;
+  itemCount: number;
+  name: string;
+  qty: number;
+  items: ReadyFireLine[];
+  readyAt: string | null;
   mine: boolean;
 };
 

@@ -26,9 +26,7 @@ import { cn } from "@/lib/utils";
 
 async function fetchNotifications(): Promise<WaiterNotificationsData> {
   const body = await apiFetch<WaiterNotificationsData>("/waiter/notifications");
-  return (
-    body.data ?? { ready: [], count: 0, mineCount: 0, staleCount: 0 }
-  );
+  return body.data ?? { ready: [], count: 0, mineCount: 0, staleCount: 0 };
 }
 
 function useNowTick(active: boolean) {
@@ -64,10 +62,13 @@ export function WaiterNotifications() {
     prevStaleCount.current = data.staleCount;
   }, [data.staleCount]);
 
-  function serve(id: string) {
+  function serve(fireId: string) {
     startTransition(async () => {
       try {
-        const result = await apiMutate(`/waiter/items/${id}/served`, "POST");
+        const result = await apiMutate(
+          `/waiter/fires/${fireId}/served`,
+          "POST",
+        );
         toast.success(result.message ?? "Served");
         await queryClient.invalidateQueries({
           queryKey: ["waiter-notifications"],
@@ -111,7 +112,7 @@ export function WaiterNotifications() {
         <DialogHeader>
           <DialogTitle>Pass — ready to run</DialogTitle>
           <DialogDescription>
-            Oldest first · any waiter can serve
+            One card per fire · run when the whole send is ready
             {data.mineCount > 0 ? ` · ${data.mineCount} on your tables` : ""}.
             Bump at {thresholdMin}+ minutes on pass.
           </DialogDescription>
@@ -122,17 +123,17 @@ export function WaiterNotifications() {
           </p>
         ) : (
           <ul className="max-h-80 space-y-2 overflow-y-auto">
-            {data.ready.map((item) => {
-              const stale = isExpoStale(item.readyAt, now);
-              const ageMs = item.readyAt
-                ? now - new Date(item.readyAt).getTime()
+            {data.ready.map((fire) => {
+              const stale = isExpoStale(fire.readyAt, now);
+              const ageMs = fire.readyAt
+                ? now - new Date(fire.readyAt).getTime()
                 : 0;
 
               return (
                 <li
-                  key={item.id}
+                  key={fire.fireId}
                   className={cn(
-                    "flex items-center justify-between gap-3 rounded-lg border p-3",
+                    "flex items-start justify-between gap-3 rounded-lg border p-3",
                     stale
                       ? "border-destructive/60 bg-destructive/10"
                       : "border-border",
@@ -141,7 +142,12 @@ export function WaiterNotifications() {
                   <div className="min-w-0">
                     <div className="flex flex-wrap items-center gap-1.5">
                       <p className="font-medium">
-                        {item.qty}× {item.name}
+                        Table {fire.tableLabel}
+                        <span className="font-normal text-muted-foreground">
+                          {" "}
+                          · {fire.itemCount} item
+                          {fire.itemCount === 1 ? "" : "s"}
+                        </span>
                       </p>
                       {stale ? (
                         <Badge
@@ -153,15 +159,21 @@ export function WaiterNotifications() {
                         </Badge>
                       ) : null}
                     </div>
-                    <p className="text-xs text-muted-foreground">
-                      Table {item.tableLabel}
-                      {item.mine ? " · yours" : ""}
-                      {item.readyAt
+                    <ul className="mt-1 space-y-0.5 text-sm">
+                      {fire.items.map((item) => (
+                        <li key={item.id}>
+                          {item.qty}× {item.name}
+                        </li>
+                      ))}
+                    </ul>
+                    <p className="mt-1 text-xs text-muted-foreground">
+                      {fire.mine ? "Yours" : "House"}
+                      {fire.readyAt
                         ? ` · ${formatElapsedMs(ageMs)} on pass`
                         : ""}
                     </p>
                     <Link
-                      href={`/waiter/tables/${item.tableId}`}
+                      href={`/waiter/tables/${fire.tableId}`}
                       className="text-xs text-primary hover:underline"
                     >
                       Open table
@@ -170,7 +182,7 @@ export function WaiterNotifications() {
                   <Button
                     size="sm"
                     disabled={pending}
-                    onClick={() => serve(item.id)}
+                    onClick={() => serve(fire.fireId)}
                   >
                     Served
                   </Button>

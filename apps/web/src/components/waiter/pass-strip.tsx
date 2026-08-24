@@ -14,9 +14,7 @@ import { cn } from "@/lib/utils";
 
 async function fetchNotifications(): Promise<WaiterNotificationsData> {
   const body = await apiFetch<WaiterNotificationsData>("/waiter/notifications");
-  return (
-    body.data ?? { ready: [], count: 0, mineCount: 0, staleCount: 0 }
-  );
+  return body.data ?? { ready: [], count: 0, mineCount: 0, staleCount: 0 };
 }
 
 function useNowTick(active: boolean) {
@@ -58,7 +56,7 @@ export function PassStrip() {
         <div>
           <h2 className="font-heading text-lg tracking-tight">Pass</h2>
           <p className="text-xs text-muted-foreground">
-            Oldest food first — run before it sits {thresholdMin}+ minutes.
+            One fire per card — run before it sits {thresholdMin}+ minutes.
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -69,7 +67,7 @@ export function PassStrip() {
             </Badge>
           ) : null}
           <Badge variant="secondary" className="rounded-md tabular-nums">
-            {data.count} waiting
+            {data.count} fire{data.count === 1 ? "" : "s"}
           </Badge>
         </div>
       </div>
@@ -82,7 +80,7 @@ export function PassStrip() {
 
           return (
             <li
-              key={ticket.id}
+              key={ticket.fireId}
               className={cn(
                 "min-w-[9rem] shrink-0 rounded-md border px-3 py-2",
                 stale
@@ -91,12 +89,13 @@ export function PassStrip() {
               )}
             >
               <p className="text-xs text-muted-foreground">#{index + 1}</p>
-              <p className="truncate font-medium">
-                {ticket.qty}× {ticket.name}
+              <p className="truncate font-medium">Table {ticket.tableLabel}</p>
+              <p className="truncate text-sm">
+                {ticket.itemCount} item{ticket.itemCount === 1 ? "" : "s"} ·{" "}
+                {ticket.name}
               </p>
               <p className="text-xs text-muted-foreground">
-                T{ticket.tableLabel}
-                {ticket.mine ? " · yours" : ""}
+                {ticket.mine ? "Yours" : "House"}
               </p>
               <p
                 className={cn(
