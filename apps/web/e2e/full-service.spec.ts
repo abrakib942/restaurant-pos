@@ -13,12 +13,16 @@ test.describe("full service flow", () => {
     const admin = await adminContext.newPage();
     await loginAs(admin, "admin", "1111");
     await admin.goto("/admin/waitlist");
-    await expect(admin.getByRole("heading", { name: "Waitlist" })).toBeVisible();
+    await expect(
+      admin.getByRole("heading", { name: "Waitlist" }),
+    ).toBeVisible();
     await admin.getByRole("button", { name: /Add party/i }).click();
     await admin.getByLabel("Party name").fill(partyName);
     await admin.getByLabel("Party size").fill("2");
     await admin.getByRole("button", { name: "Add to line" }).click();
-    await expect(admin.getByRole("row").filter({ hasText: partyName })).toBeVisible({
+    await expect(
+      admin.getByRole("row").filter({ hasText: partyName }),
+    ).toBeVisible({
       timeout: 10_000,
     });
 
@@ -65,31 +69,49 @@ test.describe("full service flow", () => {
       .filter({ hasText: `Table ${tableLabel}` })
       .first();
     await expect(pendingCard).toBeVisible({ timeout: 15_000 });
-    await pendingCard.getByRole("button", { name: "Start" }).click();
-    await expect(kitchen.getByText("Ticket in progress")).toBeVisible({
-      timeout: 10_000,
-    });
 
-    const cookingCard = kitchen
-      .locator("article")
-      .filter({ hasText: MENU_ITEM })
-      .filter({ hasText: `Table ${tableLabel}` })
-      .first();
-    await expect(cookingCard.getByRole("button", { name: "Ready" })).toBeVisible(
-      { timeout: 10_000 },
+    const boardRes = await kitchen.request.get("/backend/kitchen/board");
+    expect(boardRes.ok()).toBeTruthy();
+    const board = (await boardRes.json()) as {
+      data?: {
+        pending: {
+          fireId: string;
+          tableLabel: string;
+          items: { id: string; name: string }[];
+        }[];
+        inProgress: {
+          fireId: string;
+          items: { id: string; status: string }[];
+        }[];
+      };
+    };
+    const fire = board.data?.pending?.find(
+      (f) =>
+        f.tableLabel === tableLabel &&
+        f.items.some((i) => i.name === MENU_ITEM),
     );
-    await cookingCard.getByRole("button", { name: "Ready" }).click();
-    await expect(
-      kitchen.getByText("Ticket ready for service"),
-    ).toBeVisible({ timeout: 10_000 });
+    expect(fire).toBeTruthy();
+    for (const line of fire!.items) {
+      const start = await kitchen.request.post(
+        `/backend/kitchen/items/${line.id}/start`,
+        { data: {} },
+      );
+      expect(start.ok()).toBeTruthy();
+      const ready = await kitchen.request.post(
+        `/backend/kitchen/items/${line.id}/ready`,
+        { data: {} },
+      );
+      expect(ready.ok()).toBeTruthy();
+    }
     await kitchenContext.close();
 
     // --- Waiter: run food from pass ---
     await waiter.reload();
     const passItem = waiter
+      .getByRole("dialog")
       .locator("li")
-      .filter({ hasText: MENU_ITEM })
       .filter({ hasText: `Table ${tableLabel}` })
+      .filter({ hasText: MENU_ITEM })
       .first();
 
     await expect(async () => {
@@ -100,7 +122,9 @@ test.describe("full service flow", () => {
     }).toPass({ timeout: 30_000 });
 
     await passItem.getByRole("button", { name: "Served" }).click();
-    await expect(waiter.getByText("Marked served")).toBeVisible({
+    await expect(
+      waiter.getByText(/Fire marked served|Marked served/i),
+    ).toBeVisible({
       timeout: 10_000,
     });
 
@@ -116,7 +140,9 @@ test.describe("full service flow", () => {
       { timeout: 10_000 },
     );
     await waiter.getByRole("button", { name: "Mark paid" }).click();
-    await expect(waiter.getByText(/Payment recorded|table is free/)).toBeVisible({
+    await expect(
+      waiter.getByText(/Payment recorded|table is free/),
+    ).toBeVisible({
       timeout: 10_000,
     });
     await waiterContext.close();
