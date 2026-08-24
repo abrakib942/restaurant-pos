@@ -248,6 +248,7 @@ const categoryStationNames: Record<string, string> = {
 async function main() {
   await prisma.bill.deleteMany();
   await prisma.orderItem.deleteMany();
+  await prisma.kitchenFire.deleteMany();
   await prisma.order.deleteMany();
   await prisma.serviceRequest.deleteMany();
   await prisma.waitlistEntry.deleteMany();
@@ -406,16 +407,42 @@ async function main() {
       tip: Math.round(subtotal * 0.15 * 100) / 100,
     });
 
-    await prisma.order.create({
+    const courses = spec.lines.map((line) => itemMeta(line.item).course);
+    const order = await prisma.order.create({
       data: {
         tableId: spec.table.id,
         waiterId: spec.waiterId,
         status: "PAID",
         createdAt: hoursAgo(4),
+        bill: {
+          create: {
+            subtotal: totals.subtotal.toFixed(2),
+            discount: totals.discount.toFixed(2),
+            tax: totals.tax.toFixed(2),
+            tip: totals.tip.toFixed(2),
+            total: totals.total.toFixed(2),
+            paymentMethod: "CARD",
+            paidAt: spec.paidAt,
+            createdAt: spec.paidAt,
+          },
+        },
+      },
+    });
+    await prisma.kitchenFire.create({
+      data: {
+        orderId: order.id,
+        tableId: spec.table.id,
+        waiterId: spec.waiterId,
+        priority: "NORMAL",
+        courseMin: Math.min(...courses),
+        createdAt: hoursAgo(4),
+        startedAt: hoursAgo(3.5),
+        readyAt: hoursAgo(3.2),
         items: {
           create: spec.lines.map((line) => {
             const meta = itemMeta(line.item);
             return {
+              orderId: order.id,
               menuItemId: line.item.id,
               name: line.item.name,
               unitPrice: line.item.price,
@@ -428,18 +455,6 @@ async function main() {
               servedAt: hoursAgo(3),
             };
           }),
-        },
-        bill: {
-          create: {
-            subtotal: totals.subtotal.toFixed(2),
-            discount: totals.discount.toFixed(2),
-            tax: totals.tax.toFixed(2),
-            tip: totals.tip.toFixed(2),
-            total: totals.total.toFixed(2),
-            paymentMethod: "CARD",
-            paidAt: spec.paidAt,
-            createdAt: spec.paidAt,
-          },
         },
       },
     });
@@ -457,15 +472,28 @@ async function main() {
   const salad = byName("Little Gem Salad");
   const cocktail = byName("Smoked Old Fashioned");
 
-  await prisma.order.create({
+  const liveOrder1 = await prisma.order.create({
     data: {
       tableId: liveTable.id,
       waiterId: maya.id,
       status: "OPEN",
       createdAt: minutesAgo(25),
+    },
+  });
+  // Round 1: salad ready + chicken cooking
+  await prisma.kitchenFire.create({
+    data: {
+      orderId: liveOrder1.id,
+      tableId: liveTable.id,
+      waiterId: maya.id,
+      priority: "NORMAL",
+      courseMin: Math.min(itemMeta(salad).course, itemMeta(chicken).course),
+      createdAt: minutesAgo(25),
+      startedAt: minutesAgo(18),
       items: {
         create: [
           {
+            orderId: liveOrder1.id,
             menuItemId: salad.id,
             name: salad.name,
             unitPrice: salad.price,
@@ -477,6 +505,7 @@ async function main() {
             readyAt: minutesAgo(8),
           },
           {
+            orderId: liveOrder1.id,
             menuItemId: chicken.id,
             name: chicken.name,
             unitPrice: chicken.price,
@@ -486,7 +515,23 @@ async function main() {
             course: itemMeta(chicken).course,
             startedAt: minutesAgo(10),
           },
+        ],
+      },
+    },
+  });
+  // Round 2: rush burger + cocktail pending
+  await prisma.kitchenFire.create({
+    data: {
+      orderId: liveOrder1.id,
+      tableId: liveTable.id,
+      waiterId: maya.id,
+      priority: "RUSH",
+      courseMin: Math.min(itemMeta(burger).course, itemMeta(cocktail).course),
+      createdAt: minutesAgo(8),
+      items: {
+        create: [
           {
+            orderId: liveOrder1.id,
             menuItemId: burger.id,
             name: burger.name,
             unitPrice: burger.price,
@@ -497,6 +542,7 @@ async function main() {
             course: itemMeta(burger).course,
           },
           {
+            orderId: liveOrder1.id,
             menuItemId: cocktail.id,
             name: cocktail.name,
             unitPrice: cocktail.price,
@@ -518,15 +564,27 @@ async function main() {
   });
   const octopus = byName("Charred Octopus");
   const ricotta = byName("Whipped Ricotta");
-  await prisma.order.create({
+  const liveOrder2 = await prisma.order.create({
     data: {
       tableId: liveTable2.id,
       waiterId: julian.id,
       status: "OPEN",
       createdAt: minutesAgo(15),
+    },
+  });
+  await prisma.kitchenFire.create({
+    data: {
+      orderId: liveOrder2.id,
+      tableId: liveTable2.id,
+      waiterId: julian.id,
+      priority: "NORMAL",
+      courseMin: Math.min(itemMeta(octopus).course, itemMeta(ricotta).course),
+      createdAt: minutesAgo(15),
+      startedAt: minutesAgo(12),
       items: {
         create: [
           {
+            orderId: liveOrder2.id,
             menuItemId: octopus.id,
             name: octopus.name,
             unitPrice: octopus.price,
@@ -538,6 +596,7 @@ async function main() {
             readyAt: minutesAgo(4),
           },
           {
+            orderId: liveOrder2.id,
             menuItemId: ricotta.id,
             name: ricotta.name,
             unitPrice: ricotta.price,

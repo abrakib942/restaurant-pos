@@ -69,15 +69,16 @@ enum WaitlistStatus {
 }
 
 model User {
-  id          String      @id @default(cuid())
-  name        String
-  username    String      @unique
-  pinHash     String
-  role        Role
-  createdAt   DateTime    @default(now())
-  updatedAt   DateTime    @updatedAt
-  orders      Order[]
-  voidedItems OrderItem[] @relation("VoidedItems")
+  id           String        @id @default(cuid())
+  name         String
+  username     String        @unique
+  pinHash      String
+  role         Role
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
+  orders       Order[]
+  kitchenFires KitchenFire[]
+  voidedItems  OrderItem[]   @relation("VoidedItems")
 }
 
 model Category {
@@ -101,18 +102,19 @@ model KitchenStation {
 }
 
 model MenuItem {
-  id          String      @id @default(cuid())
-  name        String
-  description String
-  price       Decimal     @db.Decimal(10, 2)
-  imageUrl    String
-  isAvailable Boolean     @default(true)
-  sortOrder   Int         @default(0)
-  categoryId  String
-  category    Category    @relation(fields: [categoryId], references: [id], onDelete: Restrict)
-  createdAt   DateTime    @default(now())
-  updatedAt   DateTime    @updatedAt
-  orderItems  OrderItem[]
+  id                  String               @id @default(cuid())
+  name                String
+  description         String
+  price               Decimal              @db.Decimal(10, 2)
+  imageUrl            String
+  isAvailable         Boolean              @default(true)
+  sortOrder           Int                  @default(0)
+  categoryId          String
+  category            Category             @relation(fields: [categoryId], references: [id], onDelete: Restrict)
+  createdAt           DateTime             @default(now())
+  updatedAt           DateTime             @updatedAt
+  orderItems          OrderItem[]
+  serviceRequestLines ServiceRequestLine[]
 
   @@index([categoryId])
 }
@@ -125,21 +127,23 @@ model Table {
   createdAt       DateTime         @default(now())
   updatedAt       DateTime         @updatedAt
   orders          Order[]
+  kitchenFires    KitchenFire[]
   waitlistSeats   WaitlistEntry[]
   serviceRequests ServiceRequest[]
 }
 
 model Order {
-  id        String      @id @default(cuid())
+  id        String        @id @default(cuid())
   tableId   String
-  table     Table       @relation(fields: [tableId], references: [id], onDelete: Restrict)
+  table     Table         @relation(fields: [tableId], references: [id], onDelete: Restrict)
   waiterId  String
-  waiter    User        @relation(fields: [waiterId], references: [id], onDelete: Restrict)
-  source    OrderSource @default(WAITER)
-  status    OrderStatus @default(OPEN)
-  createdAt DateTime    @default(now())
-  updatedAt DateTime    @updatedAt
+  waiter    User          @relation(fields: [waiterId], references: [id], onDelete: Restrict)
+  source    OrderSource   @default(WAITER)
+  status    OrderStatus   @default(OPEN)
+  createdAt DateTime      @default(now())
+  updatedAt DateTime      @updatedAt
   items     OrderItem[]
+  fires     KitchenFire[]
   bill      Bill?
 
   @@index([tableId])
@@ -149,10 +153,35 @@ model Order {
   @@index([createdAt])
 }
 
+model KitchenFire {
+  id        String            @id @default(cuid())
+  orderId   String
+  order     Order             @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  tableId   String
+  table     Table             @relation(fields: [tableId], references: [id], onDelete: Restrict)
+  waiterId  String
+  waiter    User              @relation(fields: [waiterId], references: [id], onDelete: Restrict)
+  priority  OrderItemPriority @default(NORMAL)
+  courseMin Int               @default(2)
+  createdAt DateTime          @default(now())
+  startedAt DateTime?
+  readyAt   DateTime?
+  items     OrderItem[]
+
+  @@index([orderId])
+  @@index([tableId])
+  @@index([waiterId])
+  @@index([createdAt])
+  @@index([priority])
+  @@index([courseMin])
+}
+
 model OrderItem {
   id         String            @id @default(cuid())
   orderId    String
   order      Order             @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  fireId     String
+  fire       KitchenFire       @relation(fields: [fireId], references: [id], onDelete: Restrict)
   menuItemId String
   menuItem   MenuItem          @relation(fields: [menuItemId], references: [id], onDelete: Restrict)
   stationId  String?
@@ -174,6 +203,7 @@ model OrderItem {
   updatedAt  DateTime          @updatedAt
 
   @@index([orderId])
+  @@index([fireId])
   @@index([menuItemId])
   @@index([stationId])
   @@index([status])
@@ -222,11 +252,26 @@ model ServiceRequest {
   createdAt      DateTime             @default(now())
   updatedAt      DateTime             @updatedAt
   acknowledgedAt DateTime?
+  lines          ServiceRequestLine[]
 
   @@index([tableId])
   @@index([status])
   @@index([type])
   @@index([createdAt])
+}
+
+model ServiceRequestLine {
+  id               String         @id @default(cuid())
+  serviceRequestId String
+  serviceRequest   ServiceRequest @relation(fields: [serviceRequestId], references: [id], onDelete: Cascade)
+  menuItemId       String
+  menuItem         MenuItem       @relation(fields: [menuItemId], references: [id], onDelete: Restrict)
+  name             String
+  qty              Int
+  note             String?
+
+  @@index([serviceRequestId])
+  @@index([menuItemId])
 }
 
 model LoginAttempt {
