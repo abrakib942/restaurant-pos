@@ -1,6 +1,5 @@
-import { Type } from 'class-transformer';
+import { Type } from "class-transformer";
 import {
-  ArrayMinSize,
   IsArray,
   IsBoolean,
   IsInt,
@@ -10,8 +9,8 @@ import {
   Max,
   Min,
   ValidateNested,
-} from 'class-validator';
-import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+} from "class-validator";
+import { ApiProperty, ApiPropertyOptional } from "@nestjs/swagger";
 
 export class OrderLineDto {
   @ApiProperty()
@@ -32,6 +31,20 @@ export class OrderLineDto {
   rush?: boolean;
 }
 
+export class UpdatePendingLineDto {
+  @ApiProperty()
+  @IsString()
+  @IsNotEmpty()
+  orderItemId!: string;
+
+  @ApiProperty()
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  @Max(99)
+  qty!: number;
+}
+
 export class SubmitOrderDto {
   @ApiProperty()
   @IsString()
@@ -40,8 +53,27 @@ export class SubmitOrderDto {
 
   @ApiProperty({ type: [OrderLineDto] })
   @IsArray()
-  @ArrayMinSize(1)
   @ValidateNested({ each: true })
   @Type(() => OrderLineDto)
   items!: OrderLineDto[];
+
+  /** Void these PENDING lines on the live fire (pending patch only). */
+  @ApiPropertyOptional({ type: [String] })
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
+  removeItemIds?: string[];
+
+  /** Change qty on PENDING lines on the live fire (pending patch only). */
+  @ApiPropertyOptional({ type: [UpdatePendingLineDto] })
+  @IsOptional()
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => UpdatePendingLineDto)
+  updateItems?: UpdatePendingLineDto[];
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  serviceRequestId?: string;
 }

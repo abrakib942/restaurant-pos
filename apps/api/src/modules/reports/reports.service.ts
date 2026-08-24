@@ -1,12 +1,12 @@
-import { Injectable } from '@nestjs/common';
-import { DbService } from '@/db/db.service';
+import { Injectable } from "@nestjs/common";
+import { DbService } from "@/db/db.service";
 import {
   createErrorResult,
   createSuccessResult,
   ServiceResult,
-} from '@/common/interfaces/service-result.interface';
-import { AuditAction, AuditService } from '@/modules/audit/audit.service';
-import { VoidOrderItemDto } from './dto/reports.dto';
+} from "@/common/interfaces/service-result.interface";
+import { AuditAction, AuditService } from "@/modules/audit/audit.service";
+import { VoidOrderItemDto } from "./dto/reports.dto";
 
 export type ReportWaiterRow = {
   waiterId: string;
@@ -80,7 +80,7 @@ function defaultReportRange() {
 }
 
 function formatHour(hour: number): string {
-  const suffix = hour >= 12 ? 'PM' : 'AM';
+  const suffix = hour >= 12 ? "PM" : "AM";
   const h = hour % 12 || 12;
   return `${h} ${suffix}`;
 }
@@ -124,7 +124,7 @@ export class ReportsService {
             select: { table: { select: { label: true } } },
           },
         },
-        orderBy: { voidedAt: 'desc' },
+        orderBy: { voidedAt: "desc" },
       }),
     ]);
 
@@ -167,7 +167,7 @@ export class ReportsService {
     return createSuccessResult({
       from: rangeStart.toISOString().slice(0, 10),
       to: (fromDate <= toDate ? toDate : fromDate).toISOString().slice(0, 10),
-      label: `${rangeStart.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })} – ${toDate.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })}`,
+      label: `${rangeStart.toLocaleDateString(undefined, { month: "short", day: "numeric" })} – ${toDate.toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" })}`,
       salesTotal,
       paidChecks: paidBills.length,
       voidCount: voidedItems.length,
@@ -193,14 +193,15 @@ export class ReportsService {
     const items = await this.db.client.orderItem.findMany({
       where: {
         voidedAt: null,
-        order: { status: 'OPEN' },
+        status: "PENDING",
+        order: { status: "OPEN" },
       },
       include: {
         order: {
           select: { table: { select: { label: true } } },
         },
       },
-      orderBy: { createdAt: 'desc' },
+      orderBy: { createdAt: "desc" },
       take: 50,
     });
 
@@ -231,29 +232,39 @@ export class ReportsService {
 
     if (!item) {
       return createErrorResult(
-        { name: 'badRequest', message: 'Line item not found' },
-        'Line item not found',
+        { name: "badRequest", message: "Line item not found" },
+        "Line item not found",
       );
     }
     if (item.voidedAt) {
       return createErrorResult(
-        { name: 'badRequest', message: 'Already voided' },
-        'Already voided',
+        { name: "badRequest", message: "Already voided" },
+        "Already voided",
       );
     }
-    if (!['OPEN', 'BILLING'].includes(item.order.status)) {
+    if (!["OPEN", "BILLING"].includes(item.order.status)) {
       return createErrorResult(
-        { name: 'badRequest', message: 'Cannot void on a closed order' },
-        'Cannot void on a closed order',
+        { name: "badRequest", message: "Cannot void on a closed order" },
+        "Cannot void on a closed order",
       );
     }
-    if (item.order.status === 'BILLING') {
+    if (item.order.status === "BILLING") {
       return createErrorResult(
         {
-          name: 'badRequest',
-          message: 'Void before generating the bill, or adjust at checkout',
+          name: "badRequest",
+          message: "Void before generating the bill, or adjust at checkout",
         },
-        'Void before generating the bill, or adjust at checkout',
+        "Void before generating the bill, or adjust at checkout",
+      );
+    }
+    if (item.status !== "PENDING") {
+      return createErrorResult(
+        {
+          name: "badRequest",
+          message:
+            "Only pending kitchen lines can be voided — cooking or ready items stay on the fire",
+        },
+        "Only pending kitchen lines can be voided — cooking or ready items stay on the fire",
       );
     }
 
@@ -278,6 +289,6 @@ export class ReportsService {
       },
     });
 
-    return createSuccessResult(undefined, 'Line voided');
+    return createSuccessResult(undefined, "Line voided");
   }
 }
