@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useState, useTransition } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import {
   Minus,
@@ -12,8 +13,10 @@ import {
 } from "lucide-react";
 import { ApiClientError, apiMutate } from "@/lib/api-client";
 import { RESTAURANT_NAME } from "@/lib/constants";
+import { GuestOrderStatus } from "@/components/menu/guest-order-status";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { Input } from "@/components/ui/input";
 import { Separator } from "@/components/ui/separator";
 import {
   Dialog,
@@ -45,6 +48,7 @@ type CartLine = {
   name: string;
   unitPrice: string;
   qty: number;
+  note: string;
 };
 
 type GuestMenuProps = {
@@ -63,6 +67,7 @@ function formatPrice(price: string) {
 }
 
 export function GuestMenu({ table, categories, menuItems }: GuestMenuProps) {
+  const queryClient = useQueryClient();
   const [cartOpen, setCartOpen] = useState(false);
   const [cart, setCart] = useState<CartLine[]>([]);
   const [pending, startTransition] = useTransition();
@@ -107,6 +112,7 @@ export function GuestMenu({ table, categories, menuItems }: GuestMenuProps) {
           name: item.name,
           unitPrice: item.price,
           qty: 1,
+          note: "",
         },
       ];
     });
@@ -128,23 +134,40 @@ export function GuestMenu({ table, categories, menuItems }: GuestMenuProps) {
     setCart((prev) => prev.filter((line) => line.menuItemId !== menuItemId));
   }
 
-  function submitCart() {
+  function updateNote(menuItemId: string, note: string) {
+    setCart((prev) =>
+      prev.map((line) =>
+        line.menuItemId === menuItemId ? { ...line, note } : line,
+      ),
+    );
+  }
+
+  async function refreshOrderStatus() {
+    await queryClient.invalidateQueries({
+      queryKey: ["guest-order-status", table.qrSlug],
+    });
+  }
+
+  function callWaiterWithCart() {
     if (cart.length === 0) {
-      toast.error("Add at least one item");
+      toast.error("Add at least one item, or use Call waiter below");
       return;
     }
     startTransition(async () => {
       try {
-        const result = await apiMutate("/guest/orders", "POST", {
+        const result = await apiMutate("/guest/service-requests", "POST", {
           qrSlug: table.qrSlug,
+          type: "CALL_WAITER",
           items: cart.map((line) => ({
             menuItemId: line.menuItemId,
             qty: line.qty,
+            note: line.note.trim() || undefined,
           })),
         });
-        toast.success(result.message ?? "Order sent");
+        toast.success(result.message ?? "Waiter called with your items");
         setCart([]);
         setCartOpen(false);
+        await refreshOrderStatus();
       } catch (err) {
         toast.error(
           err instanceof ApiClientError ? err.message : "Request failed",
@@ -161,6 +184,7 @@ export function GuestMenu({ table, categories, menuItems }: GuestMenuProps) {
           type,
         });
         toast.success(result.message ?? "Sent");
+        await refreshOrderStatus();
       } catch (err) {
         toast.error(
           err instanceof ApiClientError ? err.message : "Request failed",
@@ -170,7 +194,7 @@ export function GuestMenu({ table, categories, menuItems }: GuestMenuProps) {
   }
 
   return (
-    <div className="min-h-dvh bg-background text-foreground pb-24">
+    <div className="min-h-dvh bg-background pb-24 text-foreground">
       <header className="sticky top-0 z-20 border-b border-border/80 bg-background/95 backdrop-blur-md">
         <div className="mx-auto max-w-lg px-4 pb-3 pt-4">
           <div className="flex items-end justify-between gap-3">
@@ -182,101 +206,115 @@ export function GuestMenu({ table, categories, menuItems }: GuestMenuProps) {
                 Table {table.label}
               </p>
             </div>
-            <Dialog open={cartOpen} onOpenChange={setCartOpen}>
-              <DialogTrigger asChild>
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  className="relative gap-1.5"
-                  disabled={billingLocked}
-                >
-                  <ShoppingBag className="size-4" />
-                  Cart
-                  {cartCount > 0 ? (
-                    <Badge className="absolute -right-2 -top-2 h-5 min-w-5 rounded-full px-1 tabular-nums">
-                      {cartCount}
-                    </Badge>
-                  ) : null}
-                </Button>
-              </DialogTrigger>
-              <DialogContent className="max-h-[85dvh] overflow-y-auto sm:max-w-md">
-                <DialogHeader>
-                  <DialogTitle>Your order</DialogTitle>
-                  <DialogDescription>
-                    Items go to the kitchen as soon as you send.
-                  </DialogDescription>
-                </DialogHeader>
-                {cart.length === 0 ? (
-                  <p className="py-8 text-center text-sm text-muted-foreground">
-                    Tap + on menu items to add them here.
-                  </p>
-                ) : (
-                  <>
-                    <ul className="mt-4 max-h-52 space-y-3 overflow-y-auto">
-                      {cart.map((line) => (
-                        <li key={line.menuItemId} className="space-y-2">
-                          <div className="flex items-start justify-between gap-2">
-                            <p className="text-sm font-medium">{line.name}</p>
-                            <Button
-                              type="button"
-                              size="icon-xs"
-                              variant="ghost"
-                              onClick={() => removeLine(line.menuItemId)}
+            <div className="flex shrink-0 items-center gap-2">
+              <GuestOrderStatus qrSlug={table.qrSlug} />
+              <Dialog open={cartOpen} onOpenChange={setCartOpen}>
+                <DialogTrigger asChild>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    className="relative gap-1.5"
+                    disabled={billingLocked}
+                  >
+                    <ShoppingBag className="size-4" />
+                    Cart
+                    {cartCount > 0 ? (
+                      <Badge className="absolute -right-2 -top-2 h-5 min-w-5 rounded-full px-1 tabular-nums">
+                        {cartCount}
+                      </Badge>
+                    ) : null}
+                  </Button>
+                </DialogTrigger>
+                <DialogContent className="max-h-[85dvh] overflow-y-auto sm:max-w-md">
+                  <DialogHeader>
+                    <DialogTitle>Your selections</DialogTitle>
+                    <DialogDescription>
+                      Your waiter will confirm these items and send them to the
+                      kitchen.
+                    </DialogDescription>
+                  </DialogHeader>
+                  {cart.length === 0 ? (
+                    <p className="py-8 text-center text-sm text-muted-foreground">
+                      Tap Add on menu items, then call the waiter with your
+                      list.
+                    </p>
+                  ) : (
+                    <>
+                      <ul className="mt-4 max-h-64 space-y-3 overflow-y-auto">
+                        {cart.map((line) => (
+                          <li key={line.menuItemId} className="space-y-2">
+                            <div className="flex items-start justify-between gap-2">
+                              <p className="text-sm font-medium">{line.name}</p>
+                              <Button
+                                type="button"
+                                size="icon-xs"
+                                variant="ghost"
+                                onClick={() => removeLine(line.menuItemId)}
+                                disabled={pending}
+                              >
+                                <Trash2 className="size-3.5" />
+                              </Button>
+                            </div>
+                            <div className="flex items-center gap-2">
+                              <Button
+                                type="button"
+                                size="icon-xs"
+                                variant="outline"
+                                onClick={() => updateQty(line.menuItemId, -1)}
+                                disabled={pending}
+                              >
+                                <Minus className="size-3.5" />
+                              </Button>
+                              <span className="w-6 text-center text-sm tabular-nums">
+                                {line.qty}
+                              </span>
+                              <Button
+                                type="button"
+                                size="icon-xs"
+                                variant="outline"
+                                onClick={() => updateQty(line.menuItemId, 1)}
+                                disabled={pending || line.qty >= 99}
+                              >
+                                <Plus className="size-3.5" />
+                              </Button>
+                              <span className="ml-auto text-sm tabular-nums">
+                                {formatPrice(
+                                  String(Number(line.unitPrice) * line.qty),
+                                )}
+                              </span>
+                            </div>
+                            <Input
+                              value={line.note}
+                              maxLength={120}
+                              placeholder="Note (no ice, allergy…)"
                               disabled={pending}
-                            >
-                              <Trash2 className="size-3.5" />
-                            </Button>
-                          </div>
-                          <div className="flex items-center gap-2">
-                            <Button
-                              type="button"
-                              size="icon-xs"
-                              variant="outline"
-                              onClick={() => updateQty(line.menuItemId, -1)}
-                              disabled={pending}
-                            >
-                              <Minus className="size-3.5" />
-                            </Button>
-                            <span className="w-6 text-center text-sm tabular-nums">
-                              {line.qty}
-                            </span>
-                            <Button
-                              type="button"
-                              size="icon-xs"
-                              variant="outline"
-                              onClick={() => updateQty(line.menuItemId, 1)}
-                              disabled={pending || line.qty >= 99}
-                            >
-                              <Plus className="size-3.5" />
-                            </Button>
-                            <span className="ml-auto text-sm tabular-nums">
-                              {formatPrice(
-                                String(Number(line.unitPrice) * line.qty),
-                              )}
-                            </span>
-                          </div>
-                        </li>
-                      ))}
-                    </ul>
-                    <Separator className="my-4" />
-                    <div className="flex items-center justify-between text-sm">
-                      <span className="text-muted-foreground">Subtotal</span>
-                      <span className="font-medium tabular-nums">
-                        {formatPrice(cartTotal.toFixed(2))}
-                      </span>
-                    </div>
-                    <Button
-                      className="mt-4 h-11 w-full"
-                      disabled={pending}
-                      onClick={submitCart}
-                    >
-                      {pending ? "Sending…" : "Send to kitchen"}
-                    </Button>
-                  </>
-                )}
-              </DialogContent>
-            </Dialog>
+                              onChange={(e) =>
+                                updateNote(line.menuItemId, e.target.value)
+                              }
+                            />
+                          </li>
+                        ))}
+                      </ul>
+                      <Separator className="my-4" />
+                      <div className="flex items-center justify-between text-sm">
+                        <span className="text-muted-foreground">Subtotal</span>
+                        <span className="font-medium tabular-nums">
+                          {formatPrice(cartTotal.toFixed(2))}
+                        </span>
+                      </div>
+                      <Button
+                        className="mt-4 h-11 w-full"
+                        disabled={pending}
+                        onClick={callWaiterWithCart}
+                      >
+                        {pending ? "Calling…" : "Call waiter with these items"}
+                      </Button>
+                    </>
+                  )}
+                </DialogContent>
+              </Dialog>
+            </div>
           </div>
           {billingLocked ? (
             <p className="mt-3 rounded-md border border-border bg-muted/40 px-3 py-2 text-sm text-muted-foreground">
@@ -284,8 +322,8 @@ export function GuestMenu({ table, categories, menuItems }: GuestMenuProps) {
             </p>
           ) : (
             <p className="mt-3 rounded-md border border-primary/25 bg-primary/10 px-3 py-2 text-sm leading-snug text-foreground/90">
-              Order from your phone — we&apos;ll fire it to the kitchen. Need
-              help? Call your waiter or request the bill below.
+              Browse and pick items, then call your waiter. They confirm at the
+              table and send the order to the kitchen.
             </p>
           )}
         </div>
@@ -345,7 +383,7 @@ export function GuestMenu({ table, categories, menuItems }: GuestMenuProps) {
                           {/* eslint-disable-next-line @next/next/no-img-element */}
                           <img
                             src={item.imageUrl}
-                            alt={item.name}
+                            alt=""
                             className="size-full object-cover"
                             loading="lazy"
                           />
