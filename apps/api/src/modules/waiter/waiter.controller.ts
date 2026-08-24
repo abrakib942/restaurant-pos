@@ -34,4 +34,10 @@ export class WaiterController {
   getNotifications(@CurrentUser() user: AuthUser) {
     return this.waiterService.getNotifications(user.userId);
   }
+
+  @Get('kitchen-queue')
+  @ApiOperation({ summary: 'Kitchen queue position and ETA for this waiter\'s tickets' })
+  getKitchenQueue(@CurrentUser() user: AuthUser) {
+    return this.waiterService.getKitchenQueue(user.userId);
+  }
 }
